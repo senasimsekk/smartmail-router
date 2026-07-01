@@ -145,6 +145,21 @@ CLASSIFICATION_RULES = [
         "explanation": "Mailde staj, CV veya personel alımı ifadeleri geçtiği için İnsan Kaynakları önerildi.",
     },
     {
+    "category": "Genel Başvuru",
+    "department": "İlgili Uzman Daire",
+    "priority": "Normal",
+    "requires_human_review": False,
+    "keywords": [
+        "toplanti",
+        "toplanti daveti",
+        "is birligi",
+        "gorusmek",
+        "kurum temsilcileri",
+        "rekabet hukuku alaninda",
+    ],
+    "explanation": "Mailde toplantı, iş birliği veya görüşme talebi ifadeleri geçtiği için İlgili Uzman Daire önerildi.",
+},
+    {
         "category": "Bilgi Edinme",
         "department": "İlgili Uzman Daire",
         "priority": "Normal",
@@ -209,6 +224,55 @@ def calculate_confidence(match_count: int) -> float:
 
     return round(score, 2)
 
+def apply_contextual_overrides(result: dict, normalized_text: str, email: dict) -> dict:
+    """
+    Kategori doğru bulunduktan sonra özel durumlara göre
+    öncelik veya insan onayı bilgisini günceller.
+    """
+
+    # Kişisel veri ihlali kritik kabul edilir.
+    if "veri ihlali" in normalized_text or "ucuncu kisilerle paylasildigini" in normalized_text:
+        result["priority"] = "Kritik"
+        result["requires_human_review"] = True
+        result["explanation"] += " Ayrıca kişisel veri ihlali ifadesi bulunduğu için öncelik Kritik olarak güncellendi."
+
+    # Ekli ve karar/açıklama içeren bilgi edinme talepleri insan onayına düşsün.
+    if result["category"] == "Bilgi Edinme" and email.get("has_attachment"):
+        result["requires_human_review"] = True
+        result["explanation"] += " Mail ek içerdiği için insan onayı gerekli görüldü."
+
+    # Web sitesi bağlantı/hata bildirimi düşük öncelikli teknik destek olsun.
+    # Ama portal giriş / şifre sorunları düşük değil, normal öncelikli kalmalı.
+    if result["category"] == "Teknik Destek":
+        is_website_issue = (
+            "web sitesi" in normalized_text
+            or "iletisim sayfasi" in normalized_text
+        )
+
+        is_login_or_password_issue = (
+            "portal" in normalized_text
+            or "sifre" in normalized_text
+            or "giris" in normalized_text
+        )
+
+        if is_website_issue and not is_login_or_password_issue:
+            result["priority"] = "Düşük"
+            result["explanation"] += " Web sitesi bağlantı bildirimi olduğu için öncelik Düşük olarak güncellendi."
+
+    # Basın açıklaması talebi daha öncelikli değerlendirilsin.
+    if result["category"] == "Basın Talebi":
+        high_priority_press_keywords = [
+            "basin aciklamasi",
+            "son yayimlanan karar",
+            "resmi bir basin aciklamasi",
+        ]
+
+        if any(keyword in normalized_text for keyword in high_priority_press_keywords):
+            result["priority"] = "Yüksek"
+            result["explanation"] += " Basın açıklaması talebi olduğu için öncelik Yüksek olarak güncellendi."
+
+    return result
+
 
 def classify_email(email: dict) -> dict:
     """
@@ -253,10 +317,10 @@ def classify_email(email: dict) -> dict:
             "category": "Genel Başvuru",
             "department": "Evrak Kayıt",
             "priority": "Düşük",
-            "requires_human_review": True,
+            "requires_human_review": False,
             "matched_keywords": [],
             "confidence_score": 0.40,
             "explanation": "Mail belirli bir kategoriyle güçlü şekilde eşleşmediği için manuel inceleme önerildi.",
         }
-
+    best_result = apply_contextual_overrides(best_result, normalized_text, email)
     return best_result
