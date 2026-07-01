@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException
 from app.services.email_data_service import load_emails
 from app.services.classification_service import classify_email
 from app.services.evaluation_service import evaluate_classification
+from app.services.preprocessing_service import preprocess_email
 
 
 router = APIRouter(
@@ -30,7 +31,21 @@ def get_email_by_id(email_id: int):
             return email
 
     raise HTTPException(status_code=404, detail="Email not found")
+@router.get("/{email_id}/preprocess")
+def preprocess_email_by_id(email_id: int):
+    emails = load_emails()
 
+    for email in emails:
+        if email["id"] == email_id:
+            preprocessing_result = preprocess_email(email)
+
+            return {
+                "email_id": email["id"],
+                "sender": email["sender"],
+                "preprocessing": preprocessing_result,
+            }
+
+    raise HTTPException(status_code=404, detail="Email not found")
 
 @router.post("/{email_id}/classify")
 def classify_email_by_id(email_id: int):

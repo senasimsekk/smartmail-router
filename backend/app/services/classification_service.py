@@ -1,5 +1,7 @@
 import unicodedata
 
+from app.services.preprocessing_service import build_classification_text
+
 
 def normalize_text(text: str) -> str:
    
@@ -280,11 +282,8 @@ def classify_email(email: dict) -> dict:
     en uygun kategori ve birimi döndürür.
     """
 
-    subject = email.get("subject", "")
-    body = email.get("body", "")
-
-    combined_text = f"{subject} {body}"
-    normalized_text = normalize_text(combined_text)
+    combined_text = build_classification_text(email)
+    normalized_text = normalize_text(combined_text) 
 
     best_result = None
     best_match_count = 0
