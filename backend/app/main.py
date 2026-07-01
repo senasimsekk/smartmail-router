@@ -17,6 +17,27 @@ def load_emails():
         raise FileNotFoundError(f"Data file not found: {DATA_FILE}")
     with open(DATA_FILE, "r", encoding="utf-8") as file:
         return json.load(file)
+    
+def evaluate_classification(email: dict, classification: dict) -> dict:
+    expected_result = {
+        "category": email.get("expected_category"),
+        "department": email.get("expected_department"),
+        "priority": email.get("expected_priority"),
+        "requires_human_review": email.get("requires_human_review")
+    }
+    evaluation = {
+    "category_correct": classification["category"] == expected_result["category"],
+    "department_correct": classification["department"] == expected_result["department"],
+    "priority_correct": classification["priority"] == expected_result["priority"],
+    "requires_human_review_correct": classification["requires_human_review"] == expected_result["requires_human_review"]
+    }
+
+    all_correct = all(evaluation.values())
+    return {
+    "expected_result": expected_result,
+    "evaluation": evaluation,
+    "all_correct": all_correct
+}
 
 @app.get("/")
 def home():
@@ -48,28 +69,73 @@ def classify_email_endpoint(email_id: int):
     for email in emails:
         if email["id"] == email_id:
             classification=classify_email(email)
-
-            expected_result = {
-                "category": email.get("expected_category"),
-                "department": email.get("expected_department"),
-                "priority": email.get("expected_priority"),
-                "requires_human_review": email.get("requires_human_review")
-            }
-            evaluation = {
-                "category_correct": classification["category"] == expected_result["category"],
-                "department_correct": classification["department"] == expected_result["department"],
-                "priority_correct": classification["priority"] == expected_result["priority"],
-                "requires_human_review_correct": classification["requires_human_review"] == expected_result["requires_human_review"]
-            }
-
-            all_correct = all(evaluation.values())
+            evaluation_result=evaluate_classification(email, classification)
             return {
                 "email_id": email_id,
                 "subject": email.get("subject", ""),
                 "sender": email.get("sender", ""),
                 "classification": classification,
-                "expected_result": expected_result,
-                "evaluation": evaluation,
-                "all_correct": all_correct
+                "evaluation": evaluation_result["evaluation"],
+                "all_correct": evaluation_result["all_correct"]
             }
     raise HTTPException(status_code=404, detail="Email not found")
+           
+@app.post("/emails/classify-all")
+def classify_all_emails():
+    emails = load_emails()
+
+    results = []
+    correct_count = 0
+
+    for email in emails:
+        classification = classify_email(email)
+        evaluation_result = evaluate_classification(email, classification)
+
+        if evaluation_result["all_correct"]:
+            correct_count += 1
+
+        results.append({
+            "email_id": email["id"],
+            "subject": email["subject"],
+            "sender": email["sender"],
+            "classification": classification,
+            "expected_result": evaluation_result["expected_result"],
+            "evaluation": evaluation_result["evaluation"],
+            "all_correct": evaluation_result["all_correct"]
+        })
+
+    total_emails = len(emails)
+    accuracy = correct_count / total_emails if total_emails > 0 else 0
+
+    return {
+        "total_emails": total_emails,
+        "correct_predictions": correct_count,
+        "wrong_predictions": total_emails - correct_count,
+        "accuracy": round(accuracy, 2),
+        "results": results
+    }
+@app.post("/emails/classify-errors")
+def classify_errors():
+    emails = load_emails()
+
+    errors = []
+
+    for email in emails:
+        classification = classify_email(email)
+        evaluation_result = evaluate_classification(email, classification)
+
+        if not evaluation_result["all_correct"]:
+            errors.append({
+                "email_id": email["id"],
+                "subject": email["subject"],
+                "sender": email["sender"],
+                "classification": classification,
+                "expected_result": evaluation_result["expected_result"],
+                "evaluation": evaluation_result["evaluation"]
+            })
+
+    return {
+        "error_count": len(errors),
+        "errors": errors
+    }    
+        
