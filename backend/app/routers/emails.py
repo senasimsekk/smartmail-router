@@ -11,6 +11,10 @@ from app.services.email_db_service import (
     get_email_by_id_from_db
     
 )
+from app.services.classification_db_service import (
+    classification_record_to_dict,
+    save_classification_result,
+)
 
 
 router = APIRouter(
@@ -68,6 +72,13 @@ def classify_email_by_id(email_id: int, db: Session = Depends(get_db)):
     classification = classify_email(email)
     evaluation_result = evaluate_classification(email, classification)
 
+    saved_classification = save_classification_result(
+        db=db,
+        email_id=email_id,
+        classification=classification,
+        evaluation_result=evaluation_result,
+    )
+
     return {
          "email_id": email["id"],
          "subject": email["subject"],
@@ -76,6 +87,7 @@ def classify_email_by_id(email_id: int, db: Session = Depends(get_db)):
          "expected_result": evaluation_result["expected_result"],
          "evaluation": evaluation_result["evaluation"],
          "all_correct": evaluation_result["all_correct"],
+         "saved_classification": classification_record_to_dict(saved_classification),
      }
 
   

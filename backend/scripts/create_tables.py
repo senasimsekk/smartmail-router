@@ -1,3 +1,5 @@
+
+
 import sys
 from pathlib import Path
 
@@ -8,7 +10,7 @@ print("Script started")
 
 from app.database import Base, engine
 from app.models.email import Email
-
+from app.models.email_classification import EmailClassification
 
 def create_tables():
     print("Registered tables:", Base.metadata.tables.keys())

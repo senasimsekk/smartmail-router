@@ -1,6 +1,7 @@
 import json
 import sys
 from pathlib import Path
+from sqlalchemy import text
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 PROJECT_DIR = Path(__file__).resolve().parents[2]
@@ -26,7 +27,7 @@ def seed_emails():
     try:
         emails = load_json_emails()
 
-        db.query(Email).delete() 
+        db.execute(text("TRUNCATE TABLE email_classifications, emails RESTART IDENTITY CASCADE;"))
         db.commit()
 
         for email_data in emails:
