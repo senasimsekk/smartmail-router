@@ -3,6 +3,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.services.classification_service import classify_email
+from app.services.email_analysis_service import analyze_email
+from app.services.information_extraction_service import extract_structured_information
 from app.services.evaluation_service import evaluate_classification
 from app.services.preprocessing_service import preprocess_email
 from app.services.email_db_service import (
@@ -154,4 +156,25 @@ def classify_errors(db: Session = Depends(get_db)):
     return {
         "error_count": len(errors),
         "errors": errors,
+    }
+@router.get("/{email_id}/analysis")
+def analyze_email_by_id(email_id: int, db: Session = Depends(get_db)):
+    email_record = get_email_by_id_from_db(db, email_id)
+
+    if email_record is None:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    email = email_to_dict(email_record)
+
+    classification = classify_email(email)
+    analysis = analyze_email(email, classification)
+    extracted_information = extract_structured_information(email, classification)
+
+    return {
+        "email_id": email["id"],
+        "subject": email["subject"],
+        "sender": email["sender"],
+        "classification": classification,
+        "analysis": analysis,
+        "extracted_information": extracted_information,
     }
