@@ -1,9 +1,16 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 
-from app.services.email_data_service import load_emails
+from app.database import get_db
 from app.services.classification_service import classify_email
 from app.services.evaluation_service import evaluate_classification
 from app.services.preprocessing_service import preprocess_email
+from app.services.email_db_service import (
+    email_to_dict,
+    get_all_emails_from_db,
+    get_email_by_id_from_db
+    
+)
 
 
 router = APIRouter(
@@ -13,8 +20,9 @@ router = APIRouter(
 
 
 @router.get("")
-def get_emails():
-    emails = load_emails()
+def get_emails(db: Session = Depends(get_db)):
+    email_records = get_all_emails_from_db(db)
+    emails = [email_to_dict(email) for email in email_records]
 
     return {
         "count": len(emails),
@@ -23,55 +31,60 @@ def get_emails():
 
 
 @router.get("/{email_id}")
-def get_email_by_id(email_id: int):
-    emails = load_emails()
+def get_email_by_id(email_id: int, db: Session = Depends(get_db)):
+    email_record = get_email_by_id_from_db(db, email_id)
 
-    for email in emails:
-        if email["id"] == email_id:
-            return email
+    if email_record is None:
+        raise HTTPException(status_code=404, detail="Email not found")
+    
+    return email_to_dict(email_record)
 
-    raise HTTPException(status_code=404, detail="Email not found")
+    
 @router.get("/{email_id}/preprocess")
-def preprocess_email_by_id(email_id: int):
-    emails = load_emails()
+def preprocess_email_by_id(email_id: int, db: Session = Depends(get_db)):
+    email_record = get_email_by_id_from_db(db, email_id)
 
-    for email in emails:
-        if email["id"] == email_id:
-            preprocessing_result = preprocess_email(email)
+    if email_record is None:
+        raise HTTPException(status_code=404, detail="Email not found")
+    email=email_to_dict(email_record)
+    preprocessing_result = preprocess_email(email_to_dict(email))
 
-            return {
+    return {
                 "email_id": email["id"],
                 "sender": email["sender"],
                 "preprocessing": preprocessing_result,
             }
 
-    raise HTTPException(status_code=404, detail="Email not found")
+ 
 
 @router.post("/{email_id}/classify")
-def classify_email_by_id(email_id: int):
-    emails = load_emails()
+def classify_email_by_id(email_id: int, db: Session = Depends(get_db)):
+    email_record = get_email_by_id_from_db(db, email_id)
 
-    for email in emails:
-        if email["id"] == email_id:
-            classification = classify_email(email)
-            evaluation_result = evaluate_classification(email, classification)
+    if email_record is None:
+        raise HTTPException(status_code=404, detail="Email not found")
 
-            return {
-                "email_id": email["id"],
-                "subject": email["subject"],
-                "sender": email["sender"],
-                "classification": classification,
-                "expected_result": evaluation_result["expected_result"],
-                "evaluation": evaluation_result["evaluation"],
-                "all_correct": evaluation_result["all_correct"],
-            }
+    email = email_to_dict(email_record)
+    classification = classify_email(email)
+    evaluation_result = evaluate_classification(email, classification)
 
-    raise HTTPException(status_code=404, detail="Email not found")
+    return {
+         "email_id": email["id"],
+         "subject": email["subject"],
+         "sender": email["sender"],
+         "classification": classification,
+         "expected_result": evaluation_result["expected_result"],
+         "evaluation": evaluation_result["evaluation"],
+         "all_correct": evaluation_result["all_correct"],
+     }
+
+  
 
 
 @router.post("/classify-all")
-def classify_all_emails():
-    emails = load_emails()
+def classify_all_emails(db: Session = Depends(get_db)):
+    email_records = get_all_emails_from_db(db)
+    emails = [email_to_dict(email) for email in email_records]
 
     results = []
     correct_count = 0
@@ -106,8 +119,9 @@ def classify_all_emails():
 
 
 @router.post("/classify-errors")
-def classify_errors():
-    emails = load_emails()
+def classify_errors(db: Session = Depends(get_db)):
+    email_records = get_all_emails_from_db(db)
+    emails = [email_to_dict(email) for email in email_records]
 
     errors = []
 

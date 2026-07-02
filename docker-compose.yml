@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: smartmail_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: smartmail_user
+      POSTGRES_PASSWORD: smartmail_password
+      POSTGRES_DB: smartmail_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - smartmail_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  smartmail_postgres_data:
