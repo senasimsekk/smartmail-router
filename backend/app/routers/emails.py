@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from collections import Counter
+from app.services.ai_service import analyze_email_with_mock_ai
 from app.services.classification_service import classify_email
 from app.services.email_analysis_service import analyze_email
 from app.services.information_extraction_service import extract_structured_information
@@ -123,6 +124,27 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
         "source_mailbox_distribution": dict(source_mailbox_counter),
         "operation_type_distribution": dict(operation_type_counter),
         "risk_level_distribution": dict(risk_level_counter),
+    }
+@router.get("/{email_id}/ai-analysis")
+def get_email_ai_analysis(email_id: int, db: Session = Depends(get_db)):
+    email_record = get_email_by_id_from_db(db, email_id)
+
+    if email_record is None:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    email = email_to_dict(email_record)
+    classification = classify_email(email)
+
+    ai_analysis = analyze_email_with_mock_ai(
+        email=email,
+        rule_classification=classification,
+    )
+
+    return {
+        "email_id": email["id"],
+        "subject": email["subject"],
+        "sender": email["sender"],
+        "ai_analysis": ai_analysis,
     }
 @router.get("/{email_id}")
 def get_email_by_id(email_id: int, db: Session = Depends(get_db)):
