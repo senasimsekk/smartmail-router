@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from collections import Counter
 from app.services.classification_service import classify_email
 from app.services.email_analysis_service import analyze_email
 from app.services.information_extraction_service import extract_structured_information
@@ -59,7 +60,70 @@ def get_emails_from_mailbox(
         "email_count": len(emails),
         "emails": emails,
     }
+@router.get("/dashboard/summary")
+def get_dashboard_summary(db: Session = Depends(get_db)):
+    email_records = get_all_emails_from_db(db)
+    emails = [email_to_dict(email) for email in email_records]
 
+    category_counter = Counter()
+    department_counter = Counter()
+    priority_counter = Counter()
+    source_mailbox_counter = Counter()
+    operation_type_counter = Counter()
+    risk_level_counter = Counter()
+
+    total_emails = len(emails)
+    correct_predictions = 0
+    human_review_count = 0
+    critical_risk_count = 0
+    attachment_email_count = 0
+    needs_response_count = 0
+
+    for email in emails:
+        classification = classify_email(email)
+        evaluation_result = evaluate_classification(email, classification)
+        analysis = analyze_email(email, classification)
+
+        category_counter[classification["category"]] += 1
+        department_counter[classification["department"]] += 1
+        priority_counter[classification["priority"]] += 1
+        source_mailbox_counter[email.get("source_mailbox") or "unknown"] += 1
+        operation_type_counter[analysis["operation_type"]] += 1
+        risk_level_counter[analysis["risk_level"]] += 1
+
+        if evaluation_result["all_correct"]:
+            correct_predictions += 1
+
+        if classification.get("requires_human_review"):
+            human_review_count += 1
+
+        if analysis["risk_level"] == "Kritik":
+            critical_risk_count += 1
+
+        if email.get("has_attachment"):
+            attachment_email_count += 1
+
+        if analysis["needs_response"]:
+            needs_response_count += 1
+
+    accuracy = correct_predictions / total_emails if total_emails > 0 else 0
+
+    return {
+        "total_emails": total_emails,
+        "correct_predictions": correct_predictions,
+        "wrong_predictions": total_emails - correct_predictions,
+        "accuracy": round(accuracy, 2),
+        "human_review_count": human_review_count,
+        "critical_risk_count": critical_risk_count,
+        "attachment_email_count": attachment_email_count,
+        "needs_response_count": needs_response_count,
+        "category_distribution": dict(category_counter),
+        "department_distribution": dict(department_counter),
+        "priority_distribution": dict(priority_counter),
+        "source_mailbox_distribution": dict(source_mailbox_counter),
+        "operation_type_distribution": dict(operation_type_counter),
+        "risk_level_distribution": dict(risk_level_counter),
+    }
 @router.get("/{email_id}")
 def get_email_by_id(email_id: int, db: Session = Depends(get_db)):
     email_record = get_email_by_id_from_db(db, email_id)
@@ -201,4 +265,4 @@ def analyze_email_by_id(email_id: int, db: Session = Depends(get_db)):
         "classification": classification,
         "analysis": analysis,
         "extracted_information": extracted_information,
-    }
+    }       
