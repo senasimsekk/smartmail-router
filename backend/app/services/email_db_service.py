@@ -35,3 +35,72 @@ def get_email_by_id_from_db(db, email_id: int) -> Email | None:
     """
 
     return db.query(Email).filter(Email.id == email_id).first()
+from sqlalchemy import func
+
+SUPPORTED_EMAIL_SOURCES = [
+    "IMAP / SMTP",
+    "Microsoft Exchange",
+    "Outlook / Microsoft 365",
+    "Gmail",
+    "Kurumsal mail sunucusu",
+    "Ortak posta kutuları",
+    "Birim posta kutuları",
+    "API ile mail aktarımı",
+    "E-posta arşivinden toplu aktarım",
+]
+
+
+def get_mailbox_statistics(db) -> list[dict]:
+    mailbox_counts = (
+        db.query(
+            Email.source_mailbox,
+            func.count(Email.id),
+        )
+        .group_by(Email.source_mailbox)
+        .order_by(Email.source_mailbox)
+        .all()
+    )
+
+    statistics = []
+
+    for source_mailbox, email_count in mailbox_counts:
+        statistics.append(
+            {
+                "mailbox": source_mailbox or "unknown",
+                "email_count": email_count,
+            }
+        )
+
+    return statistics
+
+
+def get_emails_by_source_mailbox(db, mailbox: str) -> list[dict]:
+    email_records = (
+        db.query(Email)
+        .filter(Email.source_mailbox == mailbox)
+        .order_by(Email.id)
+        .all()
+    )
+
+    return [email_to_dict(email) for email in email_records]
+
+
+def get_email_ingestion_overview(db) -> dict:
+    mailbox_statistics = get_mailbox_statistics(db)
+
+    total_email_count = sum(
+        mailbox["email_count"]
+        for mailbox in mailbox_statistics
+    )
+
+    return {
+        "module_name": "E-posta Alma Modülü",
+        "mode": "Synthetic MVP",
+        "description": (
+            "Bu MVP sürümünde gerçek mail sunucusuna bağlanmak yerine, "
+            "sentetik e-posta verileri farklı posta kutularından gelmiş gibi işlenir."
+        ),
+        "supported_sources": SUPPORTED_EMAIL_SOURCES,
+        "mailbox_statistics": mailbox_statistics,
+        "total_email_count": total_email_count,
+    }

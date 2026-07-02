@@ -10,7 +10,10 @@ from app.services.preprocessing_service import preprocess_email
 from app.services.email_db_service import (
     email_to_dict,
     get_all_emails_from_db,
-    get_email_by_id_from_db
+    get_email_by_id_from_db,
+    get_email_ingestion_overview,
+    get_emails_by_source_mailbox,
+    get_mailbox_statistics
     
 )
 from app.services.classification_db_service import (
@@ -34,7 +37,28 @@ def get_emails(db: Session = Depends(get_db)):
         "count": len(emails),
         "emails": emails
     }
+@router.get("/ingestion/overview")
+def get_ingestion_overview(db: Session = Depends(get_db)):
+    return get_email_ingestion_overview(db)
+@router.get("/ingestion/mailboxes")
+def get_ingestion_mailboxes(db: Session = Depends(get_db)):
+    return {
+        "mailbox_statistics": get_mailbox_statistics(db),
+    }
 
+
+@router.get("/ingestion/mailboxes/{mailbox}/emails")
+def get_emails_from_mailbox(
+    mailbox: str,
+    db: Session = Depends(get_db),
+):
+    emails = get_emails_by_source_mailbox(db, mailbox)
+
+    return {
+        "mailbox": mailbox,
+        "email_count": len(emails),
+        "emails": emails,
+    }
 
 @router.get("/{email_id}")
 def get_email_by_id(email_id: int, db: Session = Depends(get_db)):
