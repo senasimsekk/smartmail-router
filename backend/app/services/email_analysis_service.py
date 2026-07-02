@@ -1,3 +1,4 @@
+from app.services.attachment_analysis_service import analyze_attachments
 from app.services.classification_service import normalize_text
 from app.services.preprocessing_service import build_classification_text, clean_email_body
 
@@ -321,6 +322,7 @@ def analyze_email(email: dict, classification: dict) -> dict:
     summary = generate_summary(email, classification)
     risk_analysis = detect_risk(email, classification)
     response_analysis = detect_response_requirement(classification)
+    attachment_analysis = analyze_attachments(email, classification)
 
     operation_type = determine_operation_type(
         email=email,
@@ -348,4 +350,5 @@ def analyze_email(email: dict, classification: dict) -> dict:
         "operation_type": operation_type,
         "routing_decision": routing_decision,
         "suggested_action": suggested_action,
+        "attachment_analysis": attachment_analysis,
     }

@@ -87,24 +87,23 @@ def clean_email_body(body: str) -> str:
 
 
 def build_classification_text(email: dict) -> str:
-    """
-    Mail subject ve temizlenmiş body alanını birleştirir.
-    Classification service bu metin üzerinden çalışır.
-    """
+  
 
     subject = email.get("subject", "")
     body = email.get("body", "")
 
     cleaned_body = clean_email_body(body)
+    attachment_names = email.get("attachment_names", [])
 
+    if attachment_names:
+        attachment_text = " ".join(attachment_names)
+    else:
+        attachment_text = ""
     return f"{subject} {cleaned_body}".strip()
 
 
 def preprocess_email(email: dict) -> dict:
-    """
-    Bir mailin ham ve temizlenmiş halini döndürür.
-    Bu fonksiyon test/debug için kullanılabilir.
-    """
+    
 
     subject = email.get("subject", "")
     body = email.get("body", "")
