@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from collections import Counter
+from app.services.response_suggestion_service import suggest_email_response
 from app.services.ai_service import analyze_email_with_mock_ai
 from app.services.classification_service import classify_email
 from app.services.email_analysis_service import analyze_email
@@ -145,6 +146,37 @@ def get_email_ai_analysis(email_id: int, db: Session = Depends(get_db)):
         "subject": email["subject"],
         "sender": email["sender"],
         "ai_analysis": ai_analysis,
+    }
+@router.get("/{email_id}/response-suggestion")
+def get_response_suggestion(email_id: int, db: Session = Depends(get_db)):
+    email_record = get_email_by_id_from_db(db, email_id)
+
+    if email_record is None:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    email = email_to_dict(email_record)
+
+    classification = classify_email(email)
+    analysis = analyze_email(email, classification)
+    extracted_information = extract_structured_information(email, classification)
+
+    response_suggestion = suggest_email_response(
+        email=email,
+        classification=classification,
+        analysis=analysis,
+        extracted_information=extracted_information,
+    )
+
+    return {
+        "email_id": email["id"],
+        "subject": email["subject"],
+        "sender": email["sender"],
+        "category": classification["category"],
+        "department": classification["department"],
+        "priority": classification["priority"],
+        "risk_level": analysis["risk_level"],
+        "operation_type": analysis["operation_type"],
+        "response_suggestion": response_suggestion,
     }
 @router.get("/{email_id}")
 def get_email_by_id(email_id: int, db: Session = Depends(get_db)):
