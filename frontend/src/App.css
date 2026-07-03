@@ -1,0 +1,188 @@
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background-color: #f4f6f8;
+  color: #1f2937;
+}
+
+button {
+  font-family: inherit;
+}
+
+.app-container {
+  display: flex;
+  min-height: 100vh;
+}
+
+.email-list {
+  width: 36%;
+  max-width: 460px;
+  padding: 24px;
+  background-color: #ffffff;
+  border-right: 1px solid #d9dee5;
+  overflow-y: auto;
+}
+
+.email-list h1 {
+  margin: 0;
+  font-size: 26px;
+}
+
+.email-count {
+  margin: 8px 0 24px;
+  color: #6b7280;
+}
+
+.email-card {
+  width: 100%;
+  text-align: left;
+  padding: 16px;
+  margin-bottom: 12px;
+  border: 1px solid #d9dee5;
+  border-radius: 12px;
+  cursor: pointer;
+  background-color: #fafafa;
+  transition: 0.2s ease;
+}
+
+.email-card:hover {
+  background-color: #eef3ff;
+  border-color: #9bb7ff;
+}
+
+.email-card h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.email-card p {
+  margin: 0 0 6px;
+  color: #4b5563;
+}
+
+.email-card span {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.email-detail {
+  flex: 1;
+  padding: 32px;
+}
+
+.detail-card {
+  max-width: 900px;
+  background-color: #ffffff;
+  border: 1px solid #d9dee5;
+  border-radius: 16px;
+  padding: 28px;
+}
+
+.detail-card h2 {
+  margin-top: 0;
+  margin-bottom: 24px;
+}
+
+.meta-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.meta-row strong {
+  min-width: 150px;
+}
+
+.email-body {
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.empty-state {
+  height: 70vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  color: #6b7280;
+}
+
+.loading-text {
+  padding: 32px;
+}
+.active-email-card {
+  background-color: #dfe9ff;
+  border-color: #6d93f5;
+}
+
+.section-title {
+  margin-top: 24px;
+  margin-bottom: 16px;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.info-card {
+  padding: 14px;
+  border: 1px solid #d9dee5;
+  border-radius: 12px;
+  background-color: #f9fafb;
+}
+
+.info-card span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.info-card strong {
+  font-size: 15px;
+  color: #111827;
+}
+
+.summary-box,
+.response-box {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid #d9dee5;
+  border-radius: 12px;
+  background-color: #ffffff;
+}
+
+.summary-box h4,
+.response-box h4 {
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+.summary-box p,
+.response-box p {
+  margin-bottom: 0;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.warning-box {
+  margin-top: 18px;
+  padding: 14px;
+  border: 1px solid #f3c96b;
+  border-radius: 12px;
+  background-color: #fff8e5;
+  color: #7a4f00;
+  line-height: 1.5;
+}
+
+.error-text {
+  color: #b91c1c;
+  font-size: 14px;
+}
+
+.small-loading {
+  color: #6b7280;
+}

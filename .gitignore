@@ -4,4 +4,4 @@ __pycache__/
 .venv/
 venv/
 node_modules/
-.DS_Store
+.DS_Storenode_modules/
