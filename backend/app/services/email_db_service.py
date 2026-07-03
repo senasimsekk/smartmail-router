@@ -16,6 +16,11 @@ def email_to_dict(email: Email) -> dict:
         "expected_department": email.expected_department,
         "expected_priority": email.expected_priority,
         "requires_human_review": email.requires_human_review,
+        "routing_status": email.routing_status,
+        "approved_department": email.approved_department,
+        "approved_by": email.approved_by,
+        "approved_at": email.approved_at.isoformat() if email.approved_at else None,
+        "routing_note": email.routing_note,
         "created_at": email.created_at,
     }
 

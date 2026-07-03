@@ -19,5 +19,10 @@ class Email(Base):
     expected_department = Column(String, nullable=True)
     expected_priority = Column(String, nullable=True)   
     requires_human_review= Column(Boolean, default=False)
+    routing_status= Column (String, default="New")
+    approved_department= Column(String, nullable=True)
+    approved_by= Column(String, nullable=True)
+    approved_at= Column(DateTime, nullable=True)
+    routing_note= Column(Text, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-
+from pydantic import BaseModel
+from typing import  Optional
 from app.database import get_db
 from collections import Counter
 from app.services.response_suggestion_service import suggest_email_response
@@ -19,9 +20,21 @@ from app.services.email_db_service import (
     get_mailbox_statistics
     
 )
+from app.services.routing_service import (
+    get_pending_review_emails,
+      approve_email_routing,
+      correct_email_routing,
+)
 from app.services.classification_db_service import (
     classification_record_to_dict,
     save_classification_result,
+)
+from app.services.feedback_service import (
+    create_feedback,
+    create_training_example_from_feedback,
+    feedback_to_dict,
+    get_all_feedbacks,
+    get_feedbacks_by_email_id,
 )
 
 
@@ -29,7 +42,18 @@ router = APIRouter(
     prefix="/emails",
     tags=["Emails"]
 )
+class ApproveRoutingRequest(BaseModel):
+    approved_by: str
+    approved_department: Optional[str] = None
+    routing_note: Optional[str] = None
 
+
+class CorrectRoutingRequest(BaseModel):
+    corrected_category: str
+    corrected_department: str
+    corrected_priority: str
+    corrected_by: str
+    feedback_note: Optional[str] = None
 
 @router.get("")
 def get_emails(db: Session = Depends(get_db)):
@@ -178,6 +202,149 @@ def get_response_suggestion(email_id: int, db: Session = Depends(get_db)):
         "operation_type": analysis["operation_type"],
         "response_suggestion": response_suggestion,
     }
+@router.post("/{email_id}/feedback")
+def add_feedback_for_email(
+    email_id: int,
+    corrected_category: str,
+    corrected_department: str,
+    corrected_priority: str,
+    feedback_note: str | None = None,
+    created_by: str | None = None,
+    db: Session = Depends(get_db),
+):
+    email_record = get_email_by_id_from_db(db, email_id)
+
+    if email_record is None:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    email = email_to_dict(email_record)
+    original_classification = classify_email(email)
+
+    feedback = create_feedback(
+        db=db,
+        email_id=email_id,
+        original_classification=original_classification,
+        corrected_category=corrected_category,
+        corrected_department=corrected_department,
+        corrected_priority=corrected_priority,
+        feedback_note=feedback_note,
+        created_by=created_by,
+    )
+
+    return {
+        "message": "Feedback saved successfully.",
+        "email_id": email_id,
+        "original_classification": original_classification,
+        "feedback": feedback_to_dict(feedback),
+    }
+
+
+@router.get("/{email_id}/feedback")
+def get_email_feedbacks(email_id: int, db: Session = Depends(get_db)):
+    email_record = get_email_by_id_from_db(db, email_id)
+
+    if email_record is None:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    feedbacks = get_feedbacks_by_email_id(db, email_id)
+
+    return {
+        "email_id": email_id,
+        "feedback_count": len(feedbacks),
+        "feedbacks": [
+            feedback_to_dict(feedback)
+            for feedback in feedbacks
+        ],
+    }
+
+
+@router.get("/feedback/all")
+def get_feedbacks(db: Session = Depends(get_db)):
+    feedbacks = get_all_feedbacks(db)
+
+    return {
+        "feedback_count": len(feedbacks),
+        "feedbacks": [
+            feedback_to_dict(feedback)
+            for feedback in feedbacks
+        ],
+    }
+
+
+@router.get("/feedback/training-data")
+def get_feedback_training_data(db: Session = Depends(get_db)):
+    feedbacks = get_all_feedbacks(db)
+
+    training_examples = []
+
+    for feedback in feedbacks:
+        email_record = get_email_by_id_from_db(db, feedback.email_id)
+
+        if email_record is None:
+            continue
+
+        email = email_to_dict(email_record)
+
+        training_examples.append(
+            create_training_example_from_feedback(
+                feedback=feedback,
+                email=email,
+            )
+        )
+
+    return {
+        "training_example_count": len(training_examples),
+        "training_examples": training_examples,
+    }
+@router.get("/review/pending")
+def get_pending_review_email_list(db: Session = Depends(get_db)):
+    pending_emails = get_pending_review_emails(db)
+
+    return {
+        "count": len(pending_emails),
+        "pending_emails": pending_emails,
+    }
+
+
+@router.post("/{email_id}/approve-routing")
+def approve_routing(
+    email_id: int,
+    request: ApproveRoutingRequest,
+    db: Session = Depends(get_db),
+):
+    result = approve_email_routing(
+        db=db,
+        email_id=email_id,
+        approved_by=request.approved_by,
+        approved_department=request.approved_department,
+        routing_note=request.routing_note,
+    )
+
+    if not result:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    return 
+
+@router.post("/{email_id}/correct-routing")
+def correct_routing(
+    email_id: int,
+    request: CorrectRoutingRequest,
+    db: Session = Depends(get_db),
+):
+    result = correct_email_routing(
+        db=db,
+        email_id=email_id,
+        corrected_category=request.corrected_category,
+        corrected_department=request.corrected_department,
+        corrected_priority=request.corrected_priority,
+        corrected_by=request.corrected_by,
+        feedback_note=request.feedback_note,
+    )
+
+    if not result:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    return result
 @router.get("/{email_id}")
 def get_email_by_id(email_id: int, db: Session = Depends(get_db)):
     email_record = get_email_by_id_from_db(db, email_id)
