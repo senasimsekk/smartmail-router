@@ -13,7 +13,7 @@ from app.services.email_analysis_service import analyze_email
 from app.services.information_extraction_service import extract_structured_information
 from app.services.evaluation_service import evaluate_classification
 from app.services.preprocessing_service import preprocess_email
-
+from app.services.email_processing_service import process_email_by_id
 from app.services.email_db_service import (
     email_to_dict,
     get_all_emails_from_db,
@@ -370,27 +370,30 @@ def manual_email_import(
         attachment_names=request.attachment_names,
     )
 
-    classification_result = classify_email(created_email)
-
-    evaluation_result = evaluate_classification(
-        email=created_email,
-        classification=classification_result,
-    )
-
-    saved_classification = save_classification_result(
+    processed_email = process_email_by_id(
         db=db,
         email_id=created_email["id"],
-        classification=classification_result,
-        evaluation_result=evaluation_result,
+    )
+    return {
+        "message": "Email was imported and processed successfully.",
+        "imported_email": created_email,
+        "processeing_result": processed_email,
+    }
+
+@router.post("/{email_id}/process")
+def process_email(
+    email_id: int,
+    db: Session = Depends(get_db),
+):
+    result = process_email_by_id(
+        db=db,
+        email_id=email_id,
     )
 
-    return {
-        "message": "Email was imported and classified successfully.",
-        "email": created_email,
-        "classification": classification_result,
-        "evaluation": evaluation_result,
-        "saved_classification": saved_classification,
-    }
+    if not result:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    return result
 @router.get("/{email_id}")
 def get_email_by_id(email_id: int, db: Session = Depends(get_db)):
     email_record = get_email_by_id_from_db(db, email_id)
