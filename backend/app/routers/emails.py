@@ -8,10 +8,12 @@ from app.services.email_ingestion_service import create_email_from_manual_import
 from app.services.response_suggestion_service import suggest_email_response
 from app.services.ai_service import analyze_email_with_mock_ai
 from app.services.classification_service import classify_email
+from app.services.classification_db_service import save_classification_result
 from app.services.email_analysis_service import analyze_email
 from app.services.information_extraction_service import extract_structured_information
 from app.services.evaluation_service import evaluate_classification
 from app.services.preprocessing_service import preprocess_email
+
 from app.services.email_db_service import (
     email_to_dict,
     get_all_emails_from_db,
@@ -354,7 +356,10 @@ def correct_routing(
 
     return result
 @router.post("/ingestion/manual-import")
-def manual_email_import(request: ManualEmailImportRequest, db: Session = Depends(get_db)):
+def manual_email_import(
+    request: ManualEmailImportRequest,
+    db: Session = Depends(get_db),
+):
     created_email = create_email_from_manual_import(
         db=db,
         subject=request.subject,
@@ -364,9 +369,27 @@ def manual_email_import(request: ManualEmailImportRequest, db: Session = Depends
         has_attachment=request.has_attachment,
         attachment_names=request.attachment_names,
     )
+
+    classification_result = classify_email(created_email)
+
+    evaluation_result = evaluate_classification(
+        email=created_email,
+        classification=classification_result,
+    )
+
+    saved_classification = save_classification_result(
+        db=db,
+        email_id=created_email["id"],
+        classification=classification_result,
+        evaluation_result=evaluation_result,
+    )
+
     return {
-        "message": "Email imported successfully.",
+        "message": "Email was imported and classified successfully.",
         "email": created_email,
+        "classification": classification_result,
+        "evaluation": evaluation_result,
+        "saved_classification": saved_classification,
     }
 @router.get("/{email_id}")
 def get_email_by_id(email_id: int, db: Session = Depends(get_db)):
