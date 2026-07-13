@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import  Optional
 from app.database import get_db
 from collections import Counter
+from app.services.email_ingestion_service import create_email_from_manual_import
 from app.services.response_suggestion_service import suggest_email_response
 from app.services.ai_service import analyze_email_with_mock_ai
 from app.services.classification_service import classify_email
@@ -42,6 +43,13 @@ router = APIRouter(
     prefix="/emails",
     tags=["Emails"]
 )
+class ManualEmailImportRequest(BaseModel):
+    subject: str
+    sender: str
+    body: str
+    source_mailbox: Optional[str] = "webmaster@rekabet.gov.tr"
+    has_attachment:bool = False
+    attachment_names: list[str] = Field(default_factory=list)
 class ApproveRoutingRequest(BaseModel):
     approved_by: str
     approved_department: Optional[str] = None
@@ -345,6 +353,21 @@ def correct_routing(
         raise HTTPException(status_code=404, detail="Email not found")
 
     return result
+@router.post("/ingestion/manual-import")
+def manual_email_import(request: ManualEmailImportRequest, db: Session = Depends(get_db)):
+    created_email = create_email_from_manual_import(
+        db=db,
+        subject=request.subject,
+        sender=request.sender,
+        body=request.body,
+        source_mailbox=request.source_mailbox,
+        has_attachment=request.has_attachment,
+        attachment_names=request.attachment_names,
+    )
+    return {
+        "message": "Email imported successfully.",
+        "email": created_email,
+    }
 @router.get("/{email_id}")
 def get_email_by_id(email_id: int, db: Session = Depends(get_db)):
     email_record = get_email_by_id_from_db(db, email_id)
