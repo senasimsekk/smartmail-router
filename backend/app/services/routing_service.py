@@ -139,3 +139,54 @@ def correct_email_routing(
         "feedback": feedback_to_dict(feedback),
         "system_log": correction_log,
     }
+def route_email_to_department(
+    db: Session,
+    email_id: int,
+    routed_by: str,
+    target_department: str | None = None,
+    routing_note: str | None = None,
+) -> dict | None:
+    email = db.query(Email).filter(Email.id == email_id).first()
+
+    if not email:
+        return None
+
+    email_dict = email_to_dict(email)
+    classification = classify_email(email_dict)
+
+    final_department = (
+        target_department
+        or email.approved_department
+        or classification.get("department")
+    )
+
+    email.routing_status = "Routed"
+    email.approved_department = final_department
+    email.approved_by = routed_by
+    email.approved_at = datetime.utcnow()
+
+    if routing_note:
+        email.routing_note = routing_note
+
+    db.commit()
+    db.refresh(email)
+
+    routing_log = create_system_log(
+        db=db,
+        email_id=email.id,
+        action_type="EMAIL_ROUTED",
+        action_detail="Email was routed to the target department.",
+        actor=routed_by,
+        extra_data={
+            "target_department": final_department,
+            "routing_note": routing_note,
+            "previous_classification_department": classification.get("department"),
+        },
+    )
+
+    return {
+        "message": "Email was routed successfully.",
+        "email": email_to_dict(email),
+        "classification": classification,
+        "system_log": routing_log,
+    }

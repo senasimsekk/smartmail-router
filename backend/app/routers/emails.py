@@ -28,6 +28,7 @@ from app.services.routing_service import (
     get_pending_review_emails,
       approve_email_routing,
       correct_email_routing,
+      route_email_to_department
 )
 from app.services.classification_db_service import (
     classification_record_to_dict,
@@ -69,6 +70,30 @@ class CorrectRoutingRequest(BaseModel):
     corrected_priority: str
     corrected_by: str
     feedback_note: Optional[str] = None
+
+class RouteEmailRequest(BaseModel):
+    routed_by: str
+    target_department: Optional[str] = None
+    routing_note: Optional[str] = None
+
+@router.post("/{email_id}/route")
+def route_email(
+    request: RouteEmailRequest,
+    email_id: int,
+    db: Session = Depends(get_db)
+):
+    result = route_email_to_department(
+        db=db,
+        email_id=email_id,
+        routed_by=request.routed_by,
+        target_department=request.target_department,
+        routing_note=request.routing_note,
+    )
+
+    if not result:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    return result
 
 @router.get("")
 def get_emails(db: Session = Depends(get_db)):
