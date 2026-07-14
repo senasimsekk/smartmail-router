@@ -14,6 +14,7 @@ from app.services.information_extraction_service import extract_structured_infor
 from app.services.evaluation_service import evaluate_classification
 from app.services.preprocessing_service import preprocess_email
 from app.services.email_processing_service import process_email_by_id
+from app.services.dashboard_service import get_operational_dashboard_summary
 from app.services.email_db_service import (
     email_to_dict,
     get_all_emails_from_db,
@@ -424,6 +425,12 @@ def get_email_system_logs(
         "count": len(logs),
         "logs": logs,
     }
+@router.get("/dashboard/operational")
+def get_operational_dashboard(
+    db: Session = Depends(get_db),
+):
+    return get_operational_dashboard_summary(db)
+
 @router.get("/{email_id}")
 def get_email_by_id(email_id: int, db: Session = Depends(get_db)):
     email_record = get_email_by_id_from_db(db, email_id)
