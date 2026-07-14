@@ -6,7 +6,7 @@ from app.models.email import Email
 from app.services.classification_service import classify_email
 from app.services.email_db_service import email_to_dict
 from app.services.feedback_service import create_feedback, feedback_to_dict
-
+from app.services.system_log_service import create_system_log
 
 def get_pending_review_emails(db: Session) -> list[dict]:
     emails = db.query(Email).all()
@@ -61,10 +61,23 @@ def approve_email_routing(
     db.commit()
     db.refresh(email)
 
+    approval_log = create_system_log(
+        db=db,
+        email_id=email.id,
+        action_type="ROUTING_APPROVED",
+        action_detail="Email routing was approved by an operator.",
+        actor=approved_by,
+        extra_data={
+            "approved_department": final_department,
+            "routing_note": routing_note,
+        },
+    )
+
     return {
         "message": "Email routing was approved successfully.",
         "email": email_to_dict(email),
         "classification": classification,
+        "system_log": approval_log,
     }
 
 
@@ -105,9 +118,24 @@ def correct_email_routing(
     db.commit()
     db.refresh(email)
 
+    correction_log = create_system_log(
+        db=db,
+        email_id=email.id,
+        action_type="ROUTING_CORRECTED",
+        action_detail="Email routing was corrected and feedback was saved.",
+        actor=corrected_by,
+        extra_data={
+            "corrected_category": corrected_category,
+            "corrected_department": corrected_department,
+            "corrected_priority": corrected_priority,
+            "feedback_note": feedback_note,
+        },
+    )
+
     return {
         "message": "Email routing was corrected and feedback was saved.",
         "email": email_to_dict(email),
         "original_classification": original_classification,
         "feedback": feedback_to_dict(feedback),
+        "system_log": correction_log,
     }

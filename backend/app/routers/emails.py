@@ -39,6 +39,10 @@ from app.services.feedback_service import (
     get_all_feedbacks,
     get_feedbacks_by_email_id,
 )
+from app.services.system_log_service import (
+    get_all_system_logs,
+    get_system_logs_by_email_id,
+)
 
 
 router = APIRouter(
@@ -394,6 +398,32 @@ def process_email(
         raise HTTPException(status_code=404, detail="Email not found")
 
     return result
+
+@router.get("/logs/all")
+def get_system_log_list(
+    limit: int = 100,
+    db: Session = Depends(get_db),
+):
+    logs = get_all_system_logs(db, limit=limit)
+
+    return {
+        "count": len(logs),
+        "logs": logs,
+    }
+
+
+@router.get("/{email_id}/logs")
+def get_email_system_logs(
+    email_id: int,
+    db: Session = Depends(get_db),
+):
+    logs = get_system_logs_by_email_id(db, email_id=email_id)
+
+    return {
+        "email_id": email_id,
+        "count": len(logs),
+        "logs": logs,
+    }
 @router.get("/{email_id}")
 def get_email_by_id(email_id: int, db: Session = Depends(get_db)):
     email_record = get_email_by_id_from_db(db, email_id)

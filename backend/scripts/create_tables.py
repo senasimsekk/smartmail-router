@@ -12,7 +12,7 @@ from app.database import Base, engine
 from app.models.email import Email
 from app.models.email_classification import EmailClassification
 from app.models.feedback import Feedback
-
+from app.models.system_log import SystemLog
 def create_tables():
     print("Registered tables:", Base.metadata.tables.keys())
 
