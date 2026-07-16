@@ -81,6 +81,12 @@ PostgreSQL'i başlat:
 docker compose up -d
 ```
 
+Backend ortam değişkenlerini hazırla:
+
+```bash
+cp backend/.env.example backend/.env
+```
+
 Backend tablolarını oluştur ve sentetik veriyi yükle:
 
 ```bash

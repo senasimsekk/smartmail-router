@@ -24,6 +24,7 @@ body {
   min-width: 320px;
   background: var(--bg);
   color: var(--text);
+  line-height: 1.4;
 }
 
 button,
@@ -86,7 +87,9 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
 }
 
 .topbar-actions {
@@ -150,11 +153,43 @@ textarea {
   color: var(--warning);
 }
 
+.overview-section {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.overview-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.overview-heading h2 {
+  margin: 0;
+  color: var(--brand-dark);
+}
+
+.model-state,
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  border: 1px solid #8fc9bd;
+  border-radius: 999px;
+  background: #eefcf9;
+  color: var(--success);
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(9, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 12px;
-  margin-bottom: 16px;
 }
 
 .role-banner {
@@ -162,7 +197,6 @@ textarea {
   grid-template-columns: auto auto minmax(0, 1fr);
   align-items: center;
   gap: 12px;
-  margin-bottom: 16px;
   border: 1px solid #9ab7dc;
   border-radius: 8px;
   background: #edf4fb;
@@ -195,7 +229,9 @@ textarea {
 }
 
 .metric-card {
+  min-height: 92px;
   padding: 14px;
+  border-top: 4px solid #9ab7dc;
 }
 
 .metric-card span,
@@ -210,6 +246,30 @@ textarea {
 .metric-card strong {
   font-size: 28px;
   color: var(--brand-dark);
+}
+
+.metric-card.success {
+  border-top-color: var(--success);
+}
+
+.metric-card.warning {
+  border-top-color: var(--warning);
+}
+
+.metric-card.danger {
+  border-top-color: var(--danger);
+}
+
+.metric-card.success strong {
+  color: var(--success);
+}
+
+.metric-card.warning strong {
+  color: var(--warning);
+}
+
+.metric-card.danger strong {
+  color: var(--danger);
 }
 
 .workspace-grid {
@@ -410,6 +470,28 @@ textarea {
   border-bottom: 1px solid var(--line);
 }
 
+.status-pill.sla-critical {
+  border-color: #f2b8b5;
+  background: #fff2f1;
+  color: var(--danger);
+}
+
+.status-pill.sla-warning {
+  border-color: #f2c36b;
+  background: #fff8e8;
+  color: var(--warning);
+}
+
+.status-pill.sla-normal {
+  border-color: #8fc9bd;
+  background: #eefcf9;
+  color: var(--success);
+}
+
+.mail-body-section {
+  margin-top: 16px;
+}
+
 .button-row {
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -464,7 +546,7 @@ textarea {
 }
 
 .body-box {
-  margin-top: 14px;
+  margin-top: 10px;
   white-space: pre-wrap;
   line-height: 1.55;
 }
@@ -742,10 +824,6 @@ textarea {
 }
 
 @media (max-width: 1180px) {
-  .metrics-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
   .workspace-grid {
     grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
   }
@@ -763,7 +841,8 @@ textarea {
   }
 
   .topbar,
-  .detail-header {
+  .detail-header,
+  .overview-heading {
     align-items: stretch;
     flex-direction: column;
   }

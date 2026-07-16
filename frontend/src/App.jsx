@@ -855,47 +855,66 @@ function App() {
       {errorMessage && <div className="alert danger">{errorMessage}</div>}
       {actionMessage && <div className="alert success">{actionMessage}</div>}
 
-      <section className="metrics-grid" aria-label="Dashboard metrikleri">
+      <section className="overview-section" aria-label="Operasyon özeti">
+        <div className="overview-heading">
+          <div>
+            <p className="eyebrow">Operasyon Özeti</p>
+            <h2>Kuyruk ve risk görünümü</h2>
+          </div>
+          <span className="model-state">
+            {modelStatus.is_trained ? "Model eğitildi" : "Model bekliyor"}
+          </span>
+        </div>
+
+        <div className="metrics-grid" aria-label="Dashboard metrikleri">
         <Metric label="Toplam mail" value={dashboard?.total_emails ?? 0} />
         <Metric
           label="İnsan onayı"
           value={dashboard?.human_review_count ?? 0}
+          tone="warning"
         />
         <Metric
           label="Kritik risk"
           value={dashboard?.critical_risk_count ?? 0}
+          tone="danger"
         />
         <Metric
           label="Doğruluk"
           value={formatPercent(dashboard?.accuracy)}
+          tone="success"
         />
         <Metric
           label="Bekleyen"
           value={operationalDashboard?.pending_review_count ?? 0}
+          tone="warning"
         />
         <Metric
           label="SLA yaklaşan"
           value={dashboard?.sla_due_soon_count ?? 0}
+          tone="warning"
         />
         <Metric
           label="SLA geciken"
           value={dashboard?.sla_overdue_count ?? 0}
+          tone="danger"
         />
         <Metric
           label="Yönlendirilen"
           value={operationalDashboard?.routing_status_distribution?.Routed ?? 0}
+          tone="success"
         />
         <Metric label="Feedback" value={feedbackData.feedback_count ?? 0} />
-      </section>
+        </div>
 
-      <section className="role-banner">
-        <strong>{activeRolePolicy.label}</strong>
-        <span>{activeRolePolicy.department}</span>
-        <p>
-          {activeRolePolicy.permissions.length > 0
-            ? `Yetkiler: ${activeRolePolicy.permissions.join(", ")}`
-            : "Bu rol yalnızca görüntüleme amaçlıdır."}
-        </p>
+        <div className="role-banner">
+          <strong>{activeRolePolicy.label}</strong>
+          <span>{activeRolePolicy.department || "Tüm ekranlar"}</span>
+          <p>
+            {activeRolePolicy.permissions.length > 0
+              ? `Yetkiler: ${activeRolePolicy.permissions.join(", ")}`
+              : "Bu rol yalnızca görüntüleme amaçlıdır."}
+          </p>
+        </div>
       </section>
 
       <main className="workspace-grid">
@@ -1001,6 +1020,9 @@ function App() {
                   <p className="eyebrow">Seçili Mail</p>
                   <h2>{selectedEmail.subject}</h2>
                 </div>
+                <span className={`status-pill sla-${selectedEmail.sla?.severity || "normal"}`}>
+                  {getStatusLabel(selectedEmail.routing_status)}
+                </span>
                 <div className="button-row">
                   <button
                     disabled={!can("process_email")}
@@ -1040,7 +1062,13 @@ function App() {
                 />
               </div>
 
-              <div className="body-box">{selectedEmail.body}</div>
+              <section className="mail-body-section">
+                <div className="panel-heading compact-heading">
+                  <h3>Mail İçeriği</h3>
+                  <span>{formatDate(selectedEmail.created_at)}</span>
+                </div>
+                <div className="body-box">{selectedEmail.body}</div>
+              </section>
 
               {detailsLoading && (
                 <p className="muted">Analiz sonuçları yükleniyor...</p>
@@ -1560,9 +1588,9 @@ function App() {
   );
 }
 
-function Metric({ label, value }) {
+function Metric({ label, value, tone = "neutral" }) {
   return (
-    <div className="metric-card">
+    <div className={`metric-card ${tone}`}>
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
