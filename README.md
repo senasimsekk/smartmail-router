@@ -12,6 +12,7 @@ Kuruma gelen e-postaları konu, öncelik, risk ve ilgili birim açısından anal
 - Yapılandırılmış bilgi çıkarımı: dosya no, başvuru no, mevzuat, telefon, T.C. kimlik, tutar vb.
 - Cevap önerisi taslağı
 - Yanlış yönlendirme düzeltme ve feedback kaydı
+- Feedback kayıtlarından training JSONL dışa aktarma
 - Audit log ve operasyon dashboard'u
 - React tabanlı admin/operatör paneli
 
@@ -55,7 +56,8 @@ API dokümantasyonu: http://127.0.0.1:8000/docs
 3. Sınıflandırma, güven skoru, risk nedenleri, bilgi çıkarımı ve cevap önerisini incele.
 4. Onay bekleyen maili `Onayla` veya `Yönlendir` aksiyonuyla işleme al.
 5. Yanlış yönlendirme simülasyonu için düzeltme formundan yeni kategori/birim seçip feedback kaydet.
-6. Manuel sentetik mail formuna kısa bir örnek girerek sistemin yeni maili otomatik işlemesini göster.
+6. Eğitim verisi bölümünden feedback sayısını ve JSONL çıktısını göster.
+7. Manuel sentetik mail formuna kısa bir örnek girerek sistemin yeni maili otomatik işlemesini göster.
 
 ## Notlar
 

@@ -130,7 +130,7 @@ textarea {
 
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 16px;
 }
@@ -197,6 +197,10 @@ textarea {
 
 .panel-heading {
   margin-bottom: 12px;
+}
+
+.compact-heading {
+  align-items: flex-start;
 }
 
 .panel-heading span,
@@ -292,6 +296,13 @@ textarea {
 
 .button-row button {
   padding: 0 12px;
+}
+
+.small-button {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .meta-grid,
@@ -399,6 +410,65 @@ textarea {
   font-weight: 700;
 }
 
+.training-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.training-summary .meta-item {
+  min-height: 64px;
+  padding: 10px;
+}
+
+.feedback-list {
+  display: grid;
+  gap: 8px;
+}
+
+.feedback-row {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.feedback-row span {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.feedback-row strong {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+}
+
+.feedback-row p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.training-preview {
+  max-height: 170px;
+  overflow: auto;
+  margin: 10px 0 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #101828;
+  color: #eef2f6;
+  padding: 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .empty-state {
   min-height: 320px;
   display: grid;
@@ -409,7 +479,7 @@ textarea {
 
 @media (max-width: 1180px) {
   .metrics-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .workspace-grid {
@@ -438,7 +508,8 @@ textarea {
   .workspace-grid,
   .meta-grid,
   .analysis-grid,
-  .correction-form {
+  .correction-form,
+  .training-summary {
     grid-template-columns: 1fr;
   }
 

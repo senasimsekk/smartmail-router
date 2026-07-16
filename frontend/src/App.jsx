@@ -59,6 +59,14 @@ function App() {
   const [dashboard, setDashboard] = useState(null);
   const [operationalDashboard, setOperationalDashboard] = useState(null);
   const [pendingReview, setPendingReview] = useState([]);
+  const [feedbackData, setFeedbackData] = useState({
+    feedback_count: 0,
+    feedbacks: [],
+  });
+  const [trainingData, setTrainingData] = useState({
+    training_example_count: 0,
+    training_examples: [],
+  });
   const [logs, setLogs] = useState([]);
   const [importForm, setImportForm] = useState(EMPTY_IMPORT_FORM);
   const [correctionForm, setCorrectionForm] = useState({
@@ -107,18 +115,29 @@ function App() {
     setErrorMessage("");
 
     try {
-      const [emailData, dashboardData, operationalData, pendingData] =
+      const [
+        emailData,
+        dashboardData,
+        operationalData,
+        pendingData,
+        feedbackResult,
+        trainingResult,
+      ] =
         await Promise.all([
           request("/emails"),
           request("/emails/dashboard/summary"),
           request("/emails/dashboard/operational"),
           request("/emails/review/pending"),
+          request("/emails/feedback/all"),
+          request("/emails/feedback/training-data"),
         ]);
 
       setEmails(emailData.emails || []);
       setDashboard(dashboardData);
       setOperationalDashboard(operationalData);
       setPendingReview(pendingData.pending_emails || []);
+      setFeedbackData(feedbackResult);
+      setTrainingData(trainingResult);
 
       if (!selectedEmailId && emailData.emails?.length) {
         setSelectedEmailId(emailData.emails[0].id);
@@ -274,6 +293,62 @@ function App() {
     }
   }
 
+  function buildTrainingJsonl() {
+    return (trainingData.training_examples || [])
+      .map((example) =>
+        JSON.stringify({
+          messages: [
+            {
+              role: "system",
+              content:
+                "Kurumsal e-postayı category, department ve priority alanlarıyla sınıflandır.",
+            },
+            {
+              role: "user",
+              content: [
+                `Subject: ${example.subject}`,
+                `Sender: ${example.sender}`,
+                `Mailbox: ${example.source_mailbox || "-"}`,
+                `Body: ${example.body}`,
+              ].join("\n"),
+            },
+            {
+              role: "assistant",
+              content: JSON.stringify(example.corrected_label),
+            },
+          ],
+          metadata: {
+            email_id: example.email_id,
+            original_label: example.original_label,
+            feedback_note: example.feedback_note,
+          },
+        })
+      )
+      .join("\n");
+  }
+
+  function handleDownloadTrainingJsonl() {
+    const jsonl = buildTrainingJsonl();
+
+    if (!jsonl) {
+      setActionMessage("İndirilecek eğitim verisi yok.");
+      return;
+    }
+
+    const blob = new Blob([jsonl], {
+      type: "application/jsonl;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = "smartmail-training-data.jsonl";
+    link.click();
+
+    URL.revokeObjectURL(url);
+    setActionMessage("Eğitim verisi JSONL olarak hazırlandı.");
+  }
+
   const classification = details?.analysis?.classification || {};
   const analysis = details?.analysis?.analysis || {};
   const extracted = details?.analysis?.extracted_information || {};
@@ -325,6 +400,7 @@ function App() {
           label="Yönlendirilen"
           value={operationalDashboard?.routing_status_distribution?.Routed ?? 0}
         />
+        <Metric label="Feedback" value={feedbackData.feedback_count ?? 0} />
       </section>
 
       <main className="workspace-grid">
@@ -712,6 +788,50 @@ function App() {
                 <strong>{count}</strong>
               </div>
             ))}
+          </div>
+
+          <div className="compact-section">
+            <div className="panel-heading compact-heading">
+              <h3>Eğitim Verisi</h3>
+              <button
+                className="secondary-button small-button"
+                type="button"
+                onClick={handleDownloadTrainingJsonl}
+              >
+                JSONL İndir
+              </button>
+            </div>
+
+            <div className="training-summary">
+              <Meta label="Feedback" value={feedbackData.feedback_count ?? 0} />
+              <Meta
+                label="Training örneği"
+                value={trainingData.training_example_count ?? 0}
+              />
+            </div>
+
+            {feedbackData.feedbacks.length === 0 ? (
+              <p className="muted">Henüz feedback kaydı yok.</p>
+            ) : (
+              <div className="feedback-list">
+                {feedbackData.feedbacks.slice(0, 4).map((feedback) => (
+                  <div className="feedback-row" key={feedback.id}>
+                    <span>Mail #{feedback.email_id}</span>
+                    <strong>
+                      {feedback.original_department} →{" "}
+                      {feedback.corrected_department}
+                    </strong>
+                    <p>{feedback.feedback_note || "Not girilmedi."}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {trainingData.training_examples.length > 0 && (
+              <pre className="training-preview">
+                {buildTrainingJsonl().split("\n").slice(0, 2).join("\n")}
+              </pre>
+            )}
           </div>
         </aside>
       </main>

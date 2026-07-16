@@ -67,7 +67,7 @@ def feedback_to_dict(feedback: Feedback) -> dict:
         "is_misdirected": feedback.is_misdirected,
         "feedback_note": feedback.feedback_note,
         "created_by": feedback.created_by,
-        "created_at": feedback.created_at,
+        "created_at": feedback.created_at.isoformat() if feedback.created_at else None,
     }
 
 
