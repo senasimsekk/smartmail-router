@@ -564,6 +564,52 @@ textarea {
   padding: 10px;
 }
 
+.distribution-block {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.distribution-block h4 {
+  margin: 0;
+  color: var(--brand-dark);
+  font-size: 13px;
+}
+
+.distribution-row {
+  display: grid;
+  gap: 6px;
+}
+
+.distribution-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.distribution-label span {
+  overflow-wrap: anywhere;
+}
+
+.distribution-label strong {
+  color: var(--brand-dark);
+}
+
+.distribution-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e5eaf1;
+}
+
+.distribution-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--brand);
+}
+
 .feedback-list {
   display: grid;
   gap: 8px;

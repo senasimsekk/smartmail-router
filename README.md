@@ -14,6 +14,7 @@ Kuruma gelen e-postaları konu, öncelik, risk ve ilgili birim açısından anal
 - Cevap önerisi taslağı
 - Kategori bazlı SLA / süre takibi ve geciken kayıt uyarıları
 - SLA durumuna göre mail kuyruğu filtreleme ve öncelikli sıralama
+- Kategori, birim ve risk dağılımlarını gösteren operasyon barları
 - Yanlış yönlendirme düzeltme ve feedback kaydı
 - Feedback kayıtlarından training JSONL dışa aktarma
 - Admin, operatör, birim kullanıcısı ve izleyici rolleriyle rol bazlı yetki kontrolü
@@ -56,7 +57,7 @@ API dokümantasyonu: http://127.0.0.1:8000/docs
 
 ## Demo Akışı
 
-1. Dashboard metriklerinden toplam mail, kritik risk, insan onayı ve doğruluk oranını göster.
+1. Dashboard metriklerinden toplam mail, kritik risk, insan onayı, doğruluk oranı ve operasyon dağılımlarını göster.
 2. Mail kuyruğundan KVKK, tebligat veya ihbar örneğini seç.
 3. Mail kuyruğunda SLA filtresiyle geciken/yaklaşan kayıtları öne çıkar.
 4. Sınıflandırma, güven skoru, risk nedenleri, SLA son tarihi, bilgi çıkarımı ve cevap önerisini incele.

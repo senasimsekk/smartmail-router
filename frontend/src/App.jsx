@@ -169,6 +169,12 @@ function getSlaSortRank(email) {
   return 3;
 }
 
+function getDistributionEntries(distribution = {}) {
+  return Object.entries(distribution)
+    .filter(([, count]) => count > 0)
+    .sort(([, firstCount], [, secondCount]) => secondCount - firstCount);
+}
+
 function getWorkflowStatusClass(status) {
   if (["Routed", "Approved", "Classified", "Corrected"].includes(status)) {
     return "complete";
@@ -1316,6 +1322,22 @@ function App() {
           </div>
 
           <div className="compact-section">
+            <h3>Operasyon Dağılımı</h3>
+            <DistributionList
+              title="Kategori"
+              distribution={dashboard?.category_distribution}
+            />
+            <DistributionList
+              title="Birim"
+              distribution={dashboard?.department_distribution}
+            />
+            <DistributionList
+              title="Risk"
+              distribution={dashboard?.risk_level_distribution}
+            />
+          </div>
+
+          <div className="compact-section">
             <div className="panel-heading compact-heading">
               <h3>Eğitim Verisi</h3>
               <button
@@ -1405,6 +1427,39 @@ function ListBlock({ title, items = [] }) {
           <li key={item}>{item}</li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function DistributionList({ title, distribution = {} }) {
+  const entries = getDistributionEntries(distribution);
+  const total = entries.reduce((sum, [, count]) => sum + count, 0);
+
+  if (!entries.length) {
+    return null;
+  }
+
+  return (
+    <div className="distribution-block">
+      <h4>{title}</h4>
+      {entries.slice(0, 5).map(([label, count]) => {
+        const width = total > 0 ? `${Math.max((count / total) * 100, 8)}%` : "0%";
+
+        return (
+          <div className="distribution-row" key={label}>
+            <div className="distribution-label">
+              <span>{label}</span>
+              <strong>{count}</strong>
+            </div>
+            <div className="distribution-track" aria-hidden="true">
+              <div
+                className="distribution-fill"
+                style={{ width }}
+              />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
