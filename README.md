@@ -9,6 +9,7 @@ Kuruma gelen e-postaları konu, öncelik, risk ve ilgili birim açısından anal
 - Kural tabanlı sınıflandırma ve mock AI ikinci görüş katmanı
 - Birim yönlendirme, güven skoru ve insan onayı kuyruğu
 - Ek dosya adı üzerinden dosya türü, OCR ihtiyacı, risk ve evrak kaydı önerisi
+- PDF, DOCX, TXT ve CSV eklerinden metin çıkarma ve sınıflandırmaya dahil etme
 - Yapılandırılmış bilgi çıkarımı: dosya no, başvuru no, mevzuat, telefon, T.C. kimlik, tutar vb.
 - Cevap önerisi taslağı
 - Yanlış yönlendirme düzeltme ve feedback kaydı
@@ -55,12 +56,13 @@ API dokümantasyonu: http://127.0.0.1:8000/docs
 1. Dashboard metriklerinden toplam mail, kritik risk, insan onayı ve doğruluk oranını göster.
 2. Mail kuyruğundan KVKK, tebligat veya ihbar örneğini seç.
 3. Sınıflandırma, güven skoru, risk nedenleri, bilgi çıkarımı ve cevap önerisini incele.
-4. React Flow iş akışında mailin hangi aşamalardan geçtiğini göster.
-5. Onay bekleyen maili `Onayla` veya `Yönlendir` aksiyonuyla işleme al.
-6. Yanlış yönlendirme simülasyonu için düzeltme formundan yeni kategori/birim seçip feedback kaydet.
-7. Eğitim verisi bölümünden feedback sayısını ve JSONL çıktısını göster.
-8. Manuel sentetik mail formuna kısa bir örnek girerek sistemin yeni maili otomatik işlemesini göster.
+4. Ek yükleme alanından PDF/DOCX/TXT/CSV dosyası yükleyip çıkan metnin sınıflandırmaya katıldığını göster.
+5. React Flow iş akışında mailin hangi aşamalardan geçtiğini göster.
+6. Onay bekleyen maili `Onayla` veya `Yönlendir` aksiyonuyla işleme al.
+7. Yanlış yönlendirme simülasyonu için düzeltme formundan yeni kategori/birim seçip feedback kaydet.
+8. Eğitim verisi bölümünden feedback sayısını ve JSONL çıktısını göster.
+9. Manuel sentetik mail formuna kısa bir örnek girerek sistemin yeni maili otomatik işlemesini göster.
 
 ## Notlar
 
-Bu sürüm gerçek IMAP/Exchange bağlantısı ve gerçek OCR yerine sentetik veri ve dosya adı temelli ek analizi kullanır. Mimari bu servislerin ileride gerçek connector, OCR ve LLM servisleriyle değiştirilmesine uygun olacak şekilde ayrıştırılmıştır.
+Bu sürüm gerçek IMAP/Exchange bağlantısı ve gerçek OCR yerine sentetik veri kullanır. PDF/DOCX/TXT/CSV eklerinden metin çıkarma desteklenir; görsel/taranmış belgeler için OCR entegrasyonu ileriki aşamaya bırakılmıştır. Mimari bu servislerin ileride gerçek connector, OCR ve LLM servisleriyle değiştirilmesine uygun olacak şekilde ayrıştırılmıştır.

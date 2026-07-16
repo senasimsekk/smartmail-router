@@ -212,6 +212,7 @@ function App() {
   });
   const [logs, setLogs] = useState([]);
   const [importForm, setImportForm] = useState(EMPTY_IMPORT_FORM);
+  const [selectedAttachmentFile, setSelectedAttachmentFile] = useState(null);
   const [correctionForm, setCorrectionForm] = useState({
     corrected_category: "Genel Başvuru",
     corrected_department: "Evrak Kayıt",
@@ -440,6 +441,42 @@ function App() {
     }
   }
 
+  async function handleAttachmentUpload(event) {
+    event.preventDefault();
+
+    if (!selectedEmail || !selectedAttachmentFile) {
+      setActionMessage("Yüklenecek ek dosya seçilmedi.");
+      return;
+    }
+
+    setActionMessage("");
+    setErrorMessage("");
+
+    const formData = new FormData();
+    formData.append("file", selectedAttachmentFile);
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/emails/${selectedEmail.id}/attachments/upload`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Attachment upload returned ${response.status}`);
+      }
+
+      setSelectedAttachmentFile(null);
+      setActionMessage("Ek dosya yüklendi ve metin çıkarma denendi.");
+      await refreshWorkspace();
+      await fetchEmailDetails(selectedEmail.id);
+    } catch (error) {
+      setErrorMessage(error.message);
+    }
+  }
+
   function buildTrainingJsonl() {
     return (trainingData.training_examples || [])
       .map((example) =>
@@ -500,6 +537,7 @@ function App() {
   const analysis = details?.analysis?.analysis || {};
   const extracted = details?.analysis?.extracted_information || {};
   const attachmentAnalysis = analysis?.attachment_analysis || {};
+  const attachmentTexts = selectedEmail?.attachment_texts || [];
   const responseSuggestion =
     details?.responseSuggestion?.response_suggestion || {};
   const aiAnalysis = details?.aiAnalysis?.ai_analysis || {};
@@ -710,6 +748,22 @@ function App() {
 
                   <section className="section-block">
                     <h3>Ek Dosya Analizi</h3>
+                    <form
+                      className="attachment-upload-form"
+                      onSubmit={handleAttachmentUpload}
+                    >
+                      <input
+                        type="file"
+                        accept=".pdf,.docx,.txt,.csv"
+                        onChange={(event) =>
+                          setSelectedAttachmentFile(
+                            event.target.files?.[0] || null
+                          )
+                        }
+                      />
+                      <button type="submit">Ek Yükle ve Oku</button>
+                    </form>
+
                     {!attachmentAnalysis.has_attachments ? (
                       <p className="muted">Bu mailde ek dosya yok.</p>
                     ) : (
@@ -749,6 +803,28 @@ function App() {
                           </div>
                         ))}
                       </>
+                    )}
+
+                    {attachmentTexts.length > 0 && (
+                      <div className="extracted-text-list">
+                        <h4>Ekten Çıkarılan Metin</h4>
+                        {attachmentTexts.map((attachmentText) => (
+                          <div
+                            className="extracted-text-card"
+                            key={attachmentText.filename}
+                          >
+                            <div className="status-row">
+                              <strong>{attachmentText.filename}</strong>
+                              <span>{attachmentText.status}</span>
+                            </div>
+                            <p>
+                              {attachmentText.extracted_text ||
+                                attachmentText.warning ||
+                                "Metin bulunamadı."}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </section>
 

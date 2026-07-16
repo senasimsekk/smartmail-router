@@ -94,10 +94,16 @@ def build_classification_text(email: dict) -> str:
 
     cleaned_body = clean_email_body(body)
     attachment_names = email.get("attachment_names", [])
+    attachment_texts = email.get("attachment_texts", [])
 
     attachment_text = " ".join(attachment_names) if attachment_names else ""
+    extracted_attachment_text = " ".join(
+        item.get("extracted_text", "")
+        for item in attachment_texts
+        if isinstance(item, dict)
+    )
 
-    return f"{subject} {cleaned_body} {attachment_text}".strip()
+    return f"{subject} {cleaned_body} {attachment_text} {extracted_attachment_text}".strip()
 
 
 def preprocess_email(email: dict) -> dict:

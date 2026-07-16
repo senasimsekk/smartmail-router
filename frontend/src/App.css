@@ -391,6 +391,40 @@ textarea {
   color: var(--muted);
 }
 
+.attachment-upload-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.extracted-text-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.extracted-text-list h4 {
+  margin: 0;
+  color: var(--brand-dark);
+}
+
+.extracted-text-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.extracted-text-card p {
+  max-height: 150px;
+  overflow: auto;
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
 .correction-form {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
@@ -571,6 +605,7 @@ textarea {
   .workspace-grid,
   .meta-grid,
   .analysis-grid,
+  .attachment-upload-form,
   .correction-form,
   .training-summary {
     grid-template-columns: 1fr;

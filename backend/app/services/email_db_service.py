@@ -12,6 +12,7 @@ def email_to_dict(email: Email) -> dict:
         "source_mailbox": email.source_mailbox,
         "has_attachment": email.has_attachment,
         "attachment_names": email.attachment_names or [],
+        "attachment_texts": email.attachment_texts or [],
         "expected_category": email.expected_category,
         "expected_department": email.expected_department,
         "expected_priority": email.expected_priority,

@@ -14,6 +14,7 @@ class Email(Base):
     requires_human_review = Column(Boolean, default=False)
     has_attachment= Column(Boolean, default=False)
     attachment_names = Column(JSON, default=list)
+    attachment_texts = Column(JSON, default=list)
 
     expected_category = Column(String, nullable=True)
     expected_department = Column(String, nullable=True)

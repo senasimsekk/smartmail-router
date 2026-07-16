@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from typing import  Optional
@@ -15,6 +15,9 @@ from app.services.evaluation_service import evaluate_classification
 from app.services.preprocessing_service import preprocess_email
 from app.services.email_processing_service import process_email_by_id
 from app.services.dashboard_service import get_operational_dashboard_summary
+from app.services.attachment_text_extraction_service import (
+    save_attachment_and_extract_text,
+)
 from app.services.email_db_service import (
     email_to_dict,
     get_all_emails_from_db,
@@ -75,6 +78,29 @@ class RouteEmailRequest(BaseModel):
     routed_by: str
     target_department: Optional[str] = None
     routing_note: Optional[str] = None
+
+
+@router.post("/{email_id:int}/attachments/upload")
+async def upload_email_attachment(
+    email_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    file_content = await file.read()
+
+    result = save_attachment_and_extract_text(
+        db=db,
+        email_id=email_id,
+        filename=file.filename or "attachment",
+        file_content=file_content,
+        uploaded_by="operator",
+    )
+
+    if not result:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    return result
+
 
 @router.post("/{email_id:int}/route")
 def route_email(
