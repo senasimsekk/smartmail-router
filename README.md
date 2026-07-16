@@ -14,6 +14,7 @@ Kuruma gelen e-postaları konu, öncelik, risk ve ilgili birim açısından anal
 - Cevap önerisi taslağı
 - Kategori bazlı SLA / süre takibi ve geciken kayıt uyarıları
 - SLA durumuna göre mail kuyruğu filtreleme ve öncelikli sıralama
+- Konu, gönderen, posta kutusu ve durum bazlı mail kuyruğu arama/filtreleme
 - Kategori, birim ve risk dağılımlarını gösteren operasyon barları
 - Yanlış yönlendirme düzeltme ve feedback kaydı
 - Feedback kayıtlarından training JSONL dışa aktarma
@@ -59,7 +60,7 @@ API dokümantasyonu: http://127.0.0.1:8000/docs
 
 1. Dashboard metriklerinden toplam mail, kritik risk, insan onayı, doğruluk oranı ve operasyon dağılımlarını göster.
 2. Mail kuyruğundan KVKK, tebligat veya ihbar örneğini seç.
-3. Mail kuyruğunda SLA filtresiyle geciken/yaklaşan kayıtları öne çıkar.
+3. Mail kuyruğunda arama, durum filtresi ve SLA filtresiyle geciken/yaklaşan kayıtları öne çıkar.
 4. Sınıflandırma, güven skoru, risk nedenleri, SLA son tarihi, bilgi çıkarımı ve cevap önerisini incele.
 5. Ek yükleme alanından PDF/DOCX/TXT/CSV dosyası yükleyip çıkan metnin sınıflandırmaya katıldığını göster.
 6. React Flow iş akışında mailin hangi aşamalardan geçtiğini göster.

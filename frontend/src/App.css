@@ -287,6 +287,19 @@ textarea {
   color: var(--brand-dark);
 }
 
+.queue-controls {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.queue-controls input,
+.queue-controls select {
+  min-height: 36px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
 .queue-item {
   width: 100%;
   min-height: 84px;

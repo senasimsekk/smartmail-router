@@ -98,6 +98,16 @@ const SLA_FILTERS = [
   { value: "On time", label: "Zamanında" },
 ];
 
+const STATUS_FILTERS = [
+  { value: "all", label: "Tüm durumlar" },
+  { value: "New", label: "New" },
+  { value: "Classified", label: "Classified" },
+  { value: "Pending Review", label: "Pending Review" },
+  { value: "Approved", label: "Approved" },
+  { value: "Routed", label: "Routed" },
+  { value: "Corrected", label: "Corrected" },
+];
+
 const WORKFLOW_STEP_POSITIONS = [
   { id: "received", x: 0, y: 80 },
   { id: "preprocess", x: 210, y: 80 },
@@ -173,6 +183,25 @@ function getDistributionEntries(distribution = {}) {
   return Object.entries(distribution)
     .filter(([, count]) => count > 0)
     .sort(([, firstCount], [, secondCount]) => secondCount - firstCount);
+}
+
+function matchesQueueSearch(email, searchTerm) {
+  if (!searchTerm) {
+    return true;
+  }
+
+  const searchableText = [
+    email.subject,
+    email.sender,
+    email.source_mailbox,
+    email.routing_status,
+    email.sla?.status_label,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLocaleLowerCase("tr-TR");
+
+  return searchableText.includes(searchTerm);
 }
 
 function getWorkflowStatusClass(status) {
@@ -329,14 +358,24 @@ function App() {
   const [actionMessage, setActionMessage] = useState("");
   const [activeRole, setActiveRole] = useState("operator");
   const [slaFilter, setSlaFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [queueSearch, setQueueSearch] = useState("");
 
   const selectedEmail = useMemo(
     () => emails.find((email) => email.id === selectedEmailId) || null,
     [emails, selectedEmailId]
   );
   const visibleEmails = useMemo(() => {
+    const normalizedSearch = queueSearch.trim().toLocaleLowerCase("tr-TR");
+
     return emails
       .filter((email) => slaFilter === "all" || email.sla?.status === slaFilter)
+      .filter(
+        (email) =>
+          statusFilter === "all" ||
+          getStatusLabel(email.routing_status) === statusFilter
+      )
+      .filter((email) => matchesQueueSearch(email, normalizedSearch))
       .sort((firstEmail, secondEmail) => {
         const rankDifference =
           getSlaSortRank(firstEmail) - getSlaSortRank(secondEmail);
@@ -347,7 +386,7 @@ function App() {
 
         return firstEmail.id - secondEmail.id;
       });
-  }, [emails, slaFilter]);
+  }, [emails, queueSearch, slaFilter, statusFilter]);
   const activeRolePolicy = useMemo(
     () => getRolePolicy(activeRole),
     [activeRole]
@@ -819,9 +858,29 @@ function App() {
             ))}
           </div>
 
+          <div className="queue-controls">
+            <input
+              aria-label="Mail kuyruğunda ara"
+              placeholder="Konu, gönderen veya kutu ara"
+              value={queueSearch}
+              onChange={(event) => setQueueSearch(event.target.value)}
+            />
+            <select
+              aria-label="Durum filtresi"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+            >
+              {STATUS_FILTERS.map((filterOption) => (
+                <option key={filterOption.value} value={filterOption.value}>
+                  {filterOption.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="queue-list">
             {visibleEmails.length === 0 && (
-              <p className="muted">Bu filtrede mail yok.</p>
+              <p className="muted">Bu arama veya filtrede mail yok.</p>
             )}
 
             {visibleEmails.map((email) => (
