@@ -51,7 +51,7 @@ const PRIORITY_OPTIONS = ["Kritik", "Yüksek", "Normal", "Düşük"];
 const ROLE_OPTIONS = [
   {
     role: "admin",
-    label: "Admin",
+    label: "Yönetici",
     department: "Tüm birimler",
     permissions: [
       "import_email",
@@ -100,13 +100,62 @@ const SLA_FILTERS = [
 
 const STATUS_FILTERS = [
   { value: "all", label: "Tüm durumlar" },
-  { value: "New", label: "New" },
-  { value: "Classified", label: "Classified" },
-  { value: "Pending Review", label: "Pending Review" },
-  { value: "Approved", label: "Approved" },
-  { value: "Routed", label: "Routed" },
-  { value: "Corrected", label: "Corrected" },
+  { value: "New", label: "Yeni" },
+  { value: "Classified", label: "Sınıflandırıldı" },
+  { value: "Pending Review", label: "İnceleme bekliyor" },
+  { value: "Approved", label: "Onaylandı" },
+  { value: "Routed", label: "Yönlendirildi" },
+  { value: "Corrected", label: "Düzeltildi" },
 ];
+
+const STATUS_LABELS = {
+  New: "Yeni",
+  Classified: "Sınıflandırıldı",
+  "Pending Review": "İnceleme bekliyor",
+  Approved: "Onaylandı",
+  Routed: "Yönlendirildi",
+  Corrected: "Düzeltildi",
+  Completed: "Tamamlandı",
+  Archived: "Arşivlendi",
+};
+
+const SLA_LABELS = {
+  Overdue: "Geciken",
+  "Due soon": "Yaklaşan",
+  "On time": "Zamanında",
+};
+
+const LOG_ACTION_LABELS = {
+  EMAIL_IMPORTED: "E-posta içe aktarıldı",
+  EMAIL_PROCESSED: "E-posta işlendi",
+  EMAIL_ROUTED: "E-posta yönlendirildi",
+  ROUTING_APPROVED: "Yönlendirme onaylandı",
+  ROUTING_CORRECTED: "Yönlendirme düzeltildi",
+  ATTACHMENT_UPLOADED: "Ek dosya yüklendi",
+  MODEL_TRAINED: "Model eğitildi",
+};
+
+const LOG_DETAIL_LABELS = {
+  "Email was routed to the target department.":
+    "E-posta hedef birime yönlendirildi.",
+  "Email was classified and processing status was updated.":
+    "E-posta sınıflandırıldı ve işlem durumu güncellendi.",
+  "Trainable email classifier was trained.":
+    "Eğitilebilir e-posta sınıflandırma modeli eğitildi.",
+};
+
+const ACTOR_LABELS = {
+  operator: "Operatör",
+  admin: "Yönetici",
+  system: "Sistem",
+};
+
+const DECISION_SOURCE_LABELS = {
+  "Rule-based priority": "Kural tabanlı öncelik",
+  "Rule + AI agreement": "Kural ve yapay zeka uyumu",
+  "Rule-based result": "Kural tabanlı sonuç",
+  "Human review required": "İnsan incelemesi gerekli",
+};
 
 const WORKFLOW_STEP_POSITIONS = [
   { id: "received", x: 0, y: 80 },
@@ -154,7 +203,27 @@ function formatRemainingDays(value) {
 }
 
 function getStatusLabel(status) {
-  return status || "New";
+  return STATUS_LABELS[status] || status || "Yeni";
+}
+
+function getSlaLabel(status) {
+  return SLA_LABELS[status] || status || "-";
+}
+
+function getLogActionLabel(action) {
+  return LOG_ACTION_LABELS[action] || action;
+}
+
+function getLogDetailLabel(detail) {
+  return LOG_DETAIL_LABELS[detail] || detail;
+}
+
+function getActorLabel(actor) {
+  return ACTOR_LABELS[actor] || actor;
+}
+
+function getDecisionSourceLabel(source) {
+  return DECISION_SOURCE_LABELS[source] || source;
 }
 
 function getRolePolicy(role) {
@@ -195,6 +264,7 @@ function matchesQueueSearch(email, searchTerm) {
     email.sender,
     email.source_mailbox,
     email.routing_status,
+    getStatusLabel(email.routing_status),
     email.sla?.status_label,
   ]
     .filter(Boolean)
@@ -237,7 +307,7 @@ function createWorkflowNode(id, label, detail, state) {
 }
 
 function buildWorkflowGraph(email, classification, analysis, attachmentAnalysis) {
-  const routingStatus = getStatusLabel(email?.routing_status);
+  const routingStatus = email?.routing_status || "New";
   const confidence = classification.confidence_score || 0;
   const needsReview = Boolean(classification.requires_human_review);
   const hasAttachment = Boolean(email?.has_attachment);
@@ -247,7 +317,7 @@ function buildWorkflowGraph(email, classification, analysis, attachmentAnalysis)
   const nodes = [
     createWorkflowNode(
       "received",
-      "Mail Alındı",
+      "E-posta Alındı",
       email?.source_mailbox || "Kaynak kutu bekleniyor",
       "complete"
     ),
@@ -376,8 +446,7 @@ function App() {
       .filter((email) => slaFilter === "all" || email.sla?.status === slaFilter)
       .filter(
         (email) =>
-          statusFilter === "all" ||
-          getStatusLabel(email.routing_status) === statusFilter
+          statusFilter === "all" || (email.routing_status || "New") === statusFilter
       )
       .filter((email) => matchesQueueSearch(email, normalizedSearch))
       .sort((firstEmail, secondEmail) => {
@@ -510,7 +579,7 @@ function App() {
 
   useEffect(() => {
     if (selectedEmailId) {
-      // Selected mail changes should fetch fresh derived analysis data.
+      // Seçili e-posta değişince türetilmiş analiz verileri yenilenir.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchEmailDetails(selectedEmailId);
     }
@@ -522,14 +591,14 @@ function App() {
     }
 
     if (!can("process_email")) {
-      setActionMessage("Bu rol mail işleme yetkisine sahip değil.");
+      setActionMessage("Bu rol e-posta işleme yetkisine sahip değil.");
       return;
     }
 
     await runEmailAction(
       `/emails/${selectedEmail.id}/process?actor_role=${activeRole}`,
       { method: "POST" },
-      "Mail işlendi ve sınıflandırma kaydedildi."
+      "E-posta işlendi ve sınıflandırma kaydedildi."
     );
   }
 
@@ -565,7 +634,7 @@ function App() {
     }
 
     if (!can("route_email")) {
-      setActionMessage("Bu rol mail yönlendiremez.");
+      setActionMessage("Bu rol e-posta yönlendiremez.");
       return;
     }
 
@@ -581,7 +650,7 @@ function App() {
           routing_note: "Panel üzerinden ilgili birim havuzuna aktarıldı.",
         }),
       },
-      "Mail ilgili birim havuzuna yönlendirildi."
+      "E-posta ilgili birim havuzuna yönlendirildi."
     );
   }
 
@@ -634,7 +703,7 @@ function App() {
     setErrorMessage("");
 
     if (!can("import_email")) {
-      setActionMessage("Bu rol manuel mail içe aktaramaz.");
+      setActionMessage("Bu rol manuel e-posta içe aktaramaz.");
       return;
     }
 
@@ -656,7 +725,7 @@ function App() {
 
       setImportForm(EMPTY_IMPORT_FORM);
       setSelectedEmailId(created.imported_email.id);
-      setActionMessage("Sentetik mail içe aktarıldı ve işlendi.");
+      setActionMessage("Sentetik e-posta içe aktarıldı ve işlendi.");
       await refreshWorkspace();
     } catch (error) {
       setErrorMessage(error.message);
@@ -764,7 +833,7 @@ function App() {
     link.click();
 
     URL.revokeObjectURL(url);
-    setActionMessage("Eğitim verisi JSONL olarak hazırlandı.");
+    setActionMessage("Eğitim verisi dosyası hazırlandı.");
   }
 
   async function handleTrainModel() {
@@ -859,77 +928,60 @@ function App() {
       {actionMessage && <div className="alert success">{actionMessage}</div>}
 
       <section className="overview-section" aria-label="Operasyon özeti">
-        <div className="overview-heading">
-          <div>
-            <p className="eyebrow">Operasyon Özeti</p>
-            <h2>Kuyruk ve risk görünümü</h2>
-          </div>
-          <span className="model-state">
-            {modelStatus.is_trained ? "Model eğitildi" : "Model bekliyor"}
-          </span>
-        </div>
-
-        <div className="metrics-grid" aria-label="Dashboard metrikleri">
-        <Metric label="Toplam mail" value={dashboard?.total_emails ?? 0} />
-        <Metric
-          label="İnsan onayı"
-          value={dashboard?.human_review_count ?? 0}
-          tone="warning"
-        />
-        <Metric
-          label="Kritik risk"
-          value={dashboard?.critical_risk_count ?? 0}
-          tone="danger"
-        />
-        <Metric
-          label="Doğruluk"
-          value={formatPercent(dashboard?.accuracy)}
-          tone="success"
-        />
-        <Metric
-          label="Bekleyen"
-          value={operationalDashboard?.pending_review_count ?? 0}
-          tone="warning"
-        />
-        <Metric
-          label="SLA yaklaşan"
-          value={dashboard?.sla_due_soon_count ?? 0}
-          tone="warning"
-        />
-        <Metric
-          label="SLA geciken"
-          value={dashboard?.sla_overdue_count ?? 0}
-          tone="danger"
-        />
-        <Metric
-          label="Yönlendirilen"
-          value={operationalDashboard?.routing_status_distribution?.Routed ?? 0}
-          tone="success"
-        />
-        <Metric label="Feedback" value={feedbackData.feedback_count ?? 0} />
-        </div>
-
-        <div className="role-banner">
-          <strong>{activeRolePolicy.label}</strong>
-          <span>{activeRolePolicy.department || "Tüm ekranlar"}</span>
-          <p>
-            {activeRolePolicy.permissions.length > 0
-              ? `Yetkiler: ${activeRolePolicy.permissions.join(", ")}`
-              : "Bu rol yalnızca görüntüleme amaçlıdır."}
-          </p>
+        <div className="metrics-grid" aria-label="Panel metrikleri">
+          <Metric label="Toplam e-posta" value={dashboard?.total_emails ?? 0} />
+          <Metric
+            label="İnsan onayı"
+            value={dashboard?.human_review_count ?? 0}
+            tone="warning"
+          />
+          <Metric
+            label="Kritik risk"
+            value={dashboard?.critical_risk_count ?? 0}
+            tone="danger"
+          />
+          <Metric
+            label="Doğruluk"
+            value={formatPercent(dashboard?.accuracy)}
+            tone="success"
+          />
+          <Metric
+            label="Bekleyen"
+            value={operationalDashboard?.pending_review_count ?? 0}
+            tone="warning"
+          />
+          <Metric
+            label="Süre yaklaşan"
+            value={dashboard?.sla_due_soon_count ?? 0}
+            tone="warning"
+          />
+          <Metric
+            label="Süre geciken"
+            value={dashboard?.sla_overdue_count ?? 0}
+            tone="danger"
+          />
+          <Metric
+            label="Yönlendirilen"
+            value={operationalDashboard?.routing_status_distribution?.Routed ?? 0}
+            tone="success"
+          />
+          <Metric
+            label="Geri bildirim"
+            value={feedbackData.feedback_count ?? 0}
+          />
         </div>
       </section>
 
       <main className="workspace-grid">
         <aside className="queue-panel">
           <div className="panel-heading">
-            <h2>Mail Kuyruğu</h2>
+            <h2>E-posta Kuyruğu</h2>
             <span>
               {visibleEmails.length}/{emails.length} kayıt
             </span>
           </div>
 
-          <div className="filter-tabs" aria-label="SLA filtresi">
+          <div className="filter-tabs" aria-label="Süre hedefi filtresi">
             {SLA_FILTERS.map((filterOption) => (
               <button
                 key={filterOption.value}
@@ -944,7 +996,7 @@ function App() {
 
           <div className="queue-controls">
             <input
-              aria-label="Mail kuyruğunda ara"
+              aria-label="E-posta kuyruğunda ara"
               placeholder="Konu, gönderen veya kutu ara"
               value={queueSearch}
               onChange={(event) => setQueueSearch(event.target.value)}
@@ -964,7 +1016,7 @@ function App() {
 
           <div className="queue-list">
             {visibleEmails.length === 0 && (
-              <p className="muted">Bu arama veya filtrede mail yok.</p>
+              <p className="muted">Bu arama veya filtrede e-posta yok.</p>
             )}
 
             {visibleEmails.map((email) => (
@@ -982,7 +1034,9 @@ function App() {
                   <strong>{getStatusLabel(email.routing_status)}</strong>
                 </span>
                 <span className="sla-row">
-                  <span>{email.sla?.status_label || "-"}</span>
+                  <span>
+                    {getSlaLabel(email.sla?.status_label || email.sla?.status)}
+                  </span>
                   <strong>{formatRemainingDays(email.sla?.remaining_days)}</strong>
                 </span>
               </button>
@@ -1012,7 +1066,7 @@ function App() {
           {!selectedEmail && (
             <div className="empty-state">
               <h2>Kayıt bulunamadı</h2>
-              <p>Veritabanına sentetik mail ekleyerek başlayabilirsin.</p>
+              <p>Veritabanına sentetik e-posta ekleyerek başlayabilirsin.</p>
             </div>
           )}
 
@@ -1020,7 +1074,7 @@ function App() {
             <>
               <div className="detail-header">
                 <div>
-                  <p className="eyebrow">Seçili Mail</p>
+                  <p className="eyebrow">Seçili E-posta</p>
                   <h2>{selectedEmail.subject}</h2>
                 </div>
                 <span className={`status-pill sla-${selectedEmail.sla?.severity || "normal"}`}>
@@ -1067,7 +1121,7 @@ function App() {
 
               <section className="mail-body-section">
                 <div className="panel-heading compact-heading">
-                  <h3>Mail İçeriği</h3>
+                  <h3>E-posta İçeriği</h3>
                   <span>{formatDate(selectedEmail.created_at)}</span>
                 </div>
                 <div className="body-box">{selectedEmail.body}</div>
@@ -1099,7 +1153,10 @@ function App() {
                       />
                       <Meta label="Risk" value={analysis.risk_level} />
                       <Meta label="İşlem türü" value={analysis.operation_type} />
-                      <Meta label="SLA" value={sla.status_label} />
+                      <Meta
+                        label="Süre hedefi"
+                        value={getSlaLabel(sla.status_label || sla.status)}
+                      />
                       <Meta label="Son tarih" value={formatDate(sla.due_at)} />
                       <Meta
                         label="Kalan süre"
@@ -1109,7 +1166,7 @@ function App() {
 
                     <TextBlock title="Özet" text={analysis.summary} />
                     <TextBlock
-                      title="SLA politikası"
+                      title="Süre hedefi politikası"
                       text={
                         sla.policy_name
                           ? `${sla.policy_name}: ${sla.sla_days} gün içinde işlem hedeflenir.`
@@ -1177,7 +1234,7 @@ function App() {
                     </form>
 
                     {!attachmentAnalysis.has_attachments ? (
-                      <p className="muted">Bu mailde ek dosya yok.</p>
+                      <p className="muted">Bu e-postada ek dosya yok.</p>
                     ) : (
                       <>
                         <div className="analysis-grid">
@@ -1254,18 +1311,18 @@ function App() {
                   </section>
 
                   <section className="section-block">
-                    <h3>AI ve Kural Kararı</h3>
+                    <h3>Yapay Zeka ve Kural Kararı</h3>
                     <div className="analysis-grid">
                       <Meta
                         label="Kural kategorisi"
                         value={ruleBasedClassification.category}
                       />
                       <Meta
-                        label="AI kategorisi"
+                        label="Yapay zeka kategorisi"
                         value={mockAiClassification.ai_category}
                       />
                       <Meta
-                        label="AI güven"
+                        label="Yapay zeka güveni"
                         value={formatPercent(
                           mockAiClassification.ai_confidence_score
                         )}
@@ -1273,8 +1330,10 @@ function App() {
                       <Meta
                         label="Karar kaynağı"
                         value={
-                          aiAnalysis.final_recommendation
-                            ?.final_decision_source
+                          getDecisionSourceLabel(
+                            aiAnalysis.final_recommendation
+                              ?.final_decision_source
+                          )
                         }
                       />
                     </div>
@@ -1395,15 +1454,15 @@ function App() {
                   </section>
 
                   <section className="section-block">
-                    <h3>Audit Log</h3>
+                    <h3>İşlem Günlüğü</h3>
                     {logs.length === 0 ? (
-                      <p className="muted">Bu kayıt için log yok.</p>
+                      <p className="muted">Bu kayıt için işlem günlüğü yok.</p>
                     ) : (
                       logs.slice(0, 6).map((log) => (
                         <div className="log-row" key={log.id}>
-                          <strong>{log.action_type}</strong>
-                          <span>{log.actor}</span>
-                          <p>{log.action_detail}</p>
+                          <strong>{getLogActionLabel(log.action_type)}</strong>
+                          <span>{getActorLabel(log.actor)}</span>
+                          <p>{getLogDetailLabel(log.action_detail)}</p>
                         </div>
                       ))
                     )}
@@ -1415,7 +1474,7 @@ function App() {
         </section>
 
         <aside className="import-panel">
-          <h2>Manuel Sentetik Mail</h2>
+          <h2>Manuel Sentetik E-posta</h2>
           <form onSubmit={handleImportSubmit}>
             <label>
               Konu
@@ -1451,7 +1510,7 @@ function App() {
               />
             </label>
             <label>
-              Mail gövdesi
+              E-posta gövdesi
               <textarea
                 required
                 rows={7}
@@ -1475,7 +1534,7 @@ function App() {
               />
             </label>
             <button disabled={!can("import_email")} type="submit">
-              Maili İçe Aktar
+              E-postayı İçe Aktar
             </button>
           </form>
 
@@ -1485,19 +1544,19 @@ function App() {
               operationalDashboard?.routing_status_distribution || {}
             ).map(([status, count]) => (
               <div className="mini-row static" key={status}>
-                <span>{status}</span>
+                <span>{getStatusLabel(status)}</span>
                 <strong>{count}</strong>
               </div>
             ))}
           </div>
 
           <div className="compact-section">
-            <h3>SLA Dağılımı</h3>
+            <h3>Süre Hedefi Dağılımı</h3>
             {Object.entries(
               operationalDashboard?.sla_status_distribution || {}
             ).map(([status, count]) => (
               <div className="mini-row static" key={status}>
-                <span>{status}</span>
+                <span>{getSlaLabel(status)}</span>
                 <strong>{count}</strong>
               </div>
             ))}
@@ -1537,15 +1596,18 @@ function App() {
                   type="button"
                   onClick={handleDownloadTrainingJsonl}
                 >
-                  JSONL İndir
+                  Eğitim Verisini İndir
                 </button>
               </div>
             </div>
 
             <div className="training-summary">
-              <Meta label="Feedback" value={feedbackData.feedback_count ?? 0} />
               <Meta
-                label="Training örneği"
+                label="Geri bildirim"
+                value={feedbackData.feedback_count ?? 0}
+              />
+              <Meta
+                label="Eğitim örneği"
                 value={trainingData.training_example_count ?? 0}
               />
               <Meta
@@ -1563,12 +1625,12 @@ function App() {
             )}
 
             {feedbackData.feedbacks.length === 0 ? (
-              <p className="muted">Henüz feedback kaydı yok.</p>
+              <p className="muted">Henüz geri bildirim kaydı yok.</p>
             ) : (
               <div className="feedback-list">
                 {feedbackData.feedbacks.slice(0, 4).map((feedback) => (
                   <div className="feedback-row" key={feedback.id}>
-                    <span>Mail #{feedback.email_id}</span>
+                    <span>E-posta #{feedback.email_id}</span>
                     <strong>
                       {feedback.original_department} →{" "}
                       {feedback.corrected_department}
@@ -1580,9 +1642,7 @@ function App() {
             )}
 
             {trainingData.training_examples.length > 0 && (
-              <pre className="training-preview">
-                {buildTrainingJsonl().split("\n").slice(0, 2).join("\n")}
-              </pre>
+              <p className="muted">Eğitim verisi indirilmeye hazır.</p>
             )}
           </div>
         </aside>

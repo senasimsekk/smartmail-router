@@ -182,23 +182,10 @@ textarea {
 
 .overview-section {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   margin-bottom: 16px;
 }
 
-.overview-heading {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.overview-heading h2 {
-  margin: 0;
-  color: var(--brand-dark);
-}
-
-.model-state,
 .status-pill {
   display: inline-flex;
   align-items: center;
@@ -217,33 +204,6 @@ textarea {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 12px;
-}
-
-.role-banner {
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
-  border: 1px solid #f0b4b7;
-  border-radius: 8px;
-  background: #fff6f6;
-  padding: 12px 14px;
-}
-
-.role-banner strong {
-  color: var(--brand-dark);
-}
-
-.role-banner span {
-  color: var(--brand);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.role-banner p {
-  margin: 0;
-  color: var(--muted);
-  line-height: 1.4;
 }
 
 .metric-card,
@@ -931,14 +891,12 @@ textarea {
   }
 
   .topbar,
-  .detail-header,
-  .overview-heading {
+  .detail-header {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .topbar-actions,
-  .role-banner {
+  .topbar-actions {
     align-items: stretch;
     grid-template-columns: 1fr;
     flex-direction: column;
