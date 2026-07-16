@@ -13,6 +13,7 @@ Kuruma gelen e-postaları konu, öncelik, risk ve ilgili birim açısından anal
 - Yapılandırılmış bilgi çıkarımı: dosya no, başvuru no, mevzuat, telefon, T.C. kimlik, tutar vb.
 - Cevap önerisi taslağı
 - Kategori bazlı SLA / süre takibi ve geciken kayıt uyarıları
+- SLA durumuna göre mail kuyruğu filtreleme ve öncelikli sıralama
 - Yanlış yönlendirme düzeltme ve feedback kaydı
 - Feedback kayıtlarından training JSONL dışa aktarma
 - Admin, operatör, birim kullanıcısı ve izleyici rolleriyle rol bazlı yetki kontrolü
@@ -57,14 +58,15 @@ API dokümantasyonu: http://127.0.0.1:8000/docs
 
 1. Dashboard metriklerinden toplam mail, kritik risk, insan onayı ve doğruluk oranını göster.
 2. Mail kuyruğundan KVKK, tebligat veya ihbar örneğini seç.
-3. Sınıflandırma, güven skoru, risk nedenleri, SLA son tarihi, bilgi çıkarımı ve cevap önerisini incele.
-4. Ek yükleme alanından PDF/DOCX/TXT/CSV dosyası yükleyip çıkan metnin sınıflandırmaya katıldığını göster.
-5. React Flow iş akışında mailin hangi aşamalardan geçtiğini göster.
-6. Onay bekleyen maili `Onayla` veya `Yönlendir` aksiyonuyla işleme al.
-7. Aktif rolü `İzleyici` yaparak aksiyon butonlarının kapandığını, `Operatör` rolünde tekrar açıldığını göster.
-8. Yanlış yönlendirme simülasyonu için düzeltme formundan yeni kategori/birim seçip feedback kaydet.
-9. Eğitim verisi bölümünden feedback sayısını ve JSONL çıktısını göster.
-10. Manuel sentetik mail formuna kısa bir örnek girerek sistemin yeni maili otomatik işlemesini ve SLA durumunun oluşmasını göster.
+3. Mail kuyruğunda SLA filtresiyle geciken/yaklaşan kayıtları öne çıkar.
+4. Sınıflandırma, güven skoru, risk nedenleri, SLA son tarihi, bilgi çıkarımı ve cevap önerisini incele.
+5. Ek yükleme alanından PDF/DOCX/TXT/CSV dosyası yükleyip çıkan metnin sınıflandırmaya katıldığını göster.
+6. React Flow iş akışında mailin hangi aşamalardan geçtiğini göster.
+7. Onay bekleyen maili `Onayla` veya `Yönlendir` aksiyonuyla işleme al.
+8. Aktif rolü `İzleyici` yaparak aksiyon butonlarının kapandığını, `Operatör` rolünde tekrar açıldığını göster.
+9. Yanlış yönlendirme simülasyonu için düzeltme formundan yeni kategori/birim seçip feedback kaydet.
+10. Eğitim verisi bölümünden feedback sayısını ve JSONL çıktısını göster.
+11. Manuel sentetik mail formuna kısa bir örnek girerek sistemin yeni maili otomatik işlemesini ve SLA durumunun oluşmasını göster.
 
 ## Rol Bazlı Yetki
 

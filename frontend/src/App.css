@@ -265,6 +265,28 @@ textarea {
   gap: 8px;
 }
 
+.filter-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.filter-tabs button {
+  min-height: 34px;
+  border-color: var(--line);
+  background: #ffffff;
+  color: var(--brand);
+  font-size: 12px;
+}
+
+.filter-tabs button.active,
+.filter-tabs button:hover {
+  border-color: var(--brand);
+  background: #edf4fb;
+  color: var(--brand-dark);
+}
+
 .queue-item {
   width: 100%;
   min-height: 84px;
@@ -281,9 +303,22 @@ textarea {
   background: #edf4fb;
 }
 
+.queue-item.sla-critical {
+  border-left: 4px solid var(--danger);
+}
+
+.queue-item.sla-warning {
+  border-left: 4px solid var(--warning);
+}
+
+.queue-item.sla-closed {
+  border-left: 4px solid var(--success);
+}
+
 .queue-subject,
 .queue-meta,
-.status-row {
+.status-row,
+.sla-row {
   display: block;
 }
 
@@ -303,8 +338,31 @@ textarea {
   font-size: 12px;
 }
 
+.sla-row {
+  display: flex;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
 .status-row strong {
   color: var(--brand);
+}
+
+.sla-row span {
+  color: var(--muted);
+}
+
+.sla-row strong {
+  color: var(--danger);
+}
+
+.queue-item.sla-warning .sla-row strong {
+  color: var(--warning);
+}
+
+.queue-item.sla-normal .sla-row strong,
+.queue-item.sla-closed .sla-row strong {
+  color: var(--success);
 }
 
 .compact-section {

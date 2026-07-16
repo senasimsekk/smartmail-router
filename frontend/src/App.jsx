@@ -91,6 +91,13 @@ const ROLE_OPTIONS = [
   },
 ];
 
+const SLA_FILTERS = [
+  { value: "all", label: "Tümü" },
+  { value: "Overdue", label: "Geciken" },
+  { value: "Due soon", label: "Yaklaşan" },
+  { value: "On time", label: "Zamanında" },
+];
+
 const WORKFLOW_STEP_POSITIONS = [
   { id: "received", x: 0, y: 80 },
   { id: "preprocess", x: 210, y: 80 },
@@ -142,6 +149,24 @@ function getStatusLabel(status) {
 
 function getRolePolicy(role) {
   return ROLE_OPTIONS.find((option) => option.role === role) || ROLE_OPTIONS[1];
+}
+
+function getSlaSortRank(email) {
+  const status = email?.sla?.status;
+
+  if (status === "Overdue") {
+    return 0;
+  }
+
+  if (status === "Due soon") {
+    return 1;
+  }
+
+  if (status === "On time") {
+    return 2;
+  }
+
+  return 3;
 }
 
 function getWorkflowStatusClass(status) {
@@ -297,11 +322,26 @@ function App() {
   const [errorMessage, setErrorMessage] = useState("");
   const [actionMessage, setActionMessage] = useState("");
   const [activeRole, setActiveRole] = useState("operator");
+  const [slaFilter, setSlaFilter] = useState("all");
 
   const selectedEmail = useMemo(
     () => emails.find((email) => email.id === selectedEmailId) || null,
     [emails, selectedEmailId]
   );
+  const visibleEmails = useMemo(() => {
+    return emails
+      .filter((email) => slaFilter === "all" || email.sla?.status === slaFilter)
+      .sort((firstEmail, secondEmail) => {
+        const rankDifference =
+          getSlaSortRank(firstEmail) - getSlaSortRank(secondEmail);
+
+        if (rankDifference !== 0) {
+          return rankDifference;
+        }
+
+        return firstEmail.id - secondEmail.id;
+      });
+  }, [emails, slaFilter]);
   const activeRolePolicy = useMemo(
     () => getRolePolicy(activeRole),
     [activeRole]
@@ -755,14 +795,33 @@ function App() {
         <aside className="queue-panel">
           <div className="panel-heading">
             <h2>Mail Kuyruğu</h2>
-            <span>{emails.length} kayıt</span>
+            <span>
+              {visibleEmails.length}/{emails.length} kayıt
+            </span>
+          </div>
+
+          <div className="filter-tabs" aria-label="SLA filtresi">
+            {SLA_FILTERS.map((filterOption) => (
+              <button
+                key={filterOption.value}
+                className={slaFilter === filterOption.value ? "active" : ""}
+                type="button"
+                onClick={() => setSlaFilter(filterOption.value)}
+              >
+                {filterOption.label}
+              </button>
+            ))}
           </div>
 
           <div className="queue-list">
-            {emails.map((email) => (
+            {visibleEmails.length === 0 && (
+              <p className="muted">Bu filtrede mail yok.</p>
+            )}
+
+            {visibleEmails.map((email) => (
               <button
                 key={email.id}
-                className={`queue-item ${
+                className={`queue-item sla-${email.sla?.severity || "normal"} ${
                   selectedEmailId === email.id ? "selected" : ""
                 }`}
                 onClick={() => setSelectedEmailId(email.id)}
@@ -772,6 +831,10 @@ function App() {
                 <span className="status-row">
                   <span>{email.source_mailbox}</span>
                   <strong>{getStatusLabel(email.routing_status)}</strong>
+                </span>
+                <span className="sla-row">
+                  <span>{email.sla?.status_label || "-"}</span>
+                  <strong>{formatRemainingDays(email.sla?.remaining_days)}</strong>
                 </span>
               </button>
             ))}

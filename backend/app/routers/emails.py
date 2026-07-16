@@ -22,6 +22,7 @@ from app.services.authorization_service import (
     get_available_roles,
     role_has_permission,
 )
+from app.services.sla_service import calculate_sla
 from app.services.email_db_service import (
     email_to_dict,
     get_all_emails_from_db,
@@ -153,7 +154,13 @@ def route_email(
 @router.get("")
 def get_emails(db: Session = Depends(get_db)):
     email_records = get_all_emails_from_db(db)
-    emails = [email_to_dict(email) for email in email_records]
+    emails = []
+
+    for email_record in email_records:
+        email = email_to_dict(email_record)
+        classification = classify_email(email)
+        email["sla"] = calculate_sla(email, classification)
+        emails.append(email)
 
     return {
         "count": len(emails),
