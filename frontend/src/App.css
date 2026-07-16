@@ -457,7 +457,7 @@ textarea {
 .section-block h3 {
   margin: 0 0 12px;
   color: var(--brand-dark);
-  font-size: 20px;
+  font-size: 18px;
   line-height: 1.25;
   text-align: left;
 }
@@ -662,23 +662,52 @@ textarea {
 
 .correction-form {
   display: grid;
-  grid-template-columns: repeat(3, minmax(140px, 1fr)) minmax(160px, 1fr) auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   align-items: end;
-  gap: 8px;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcff;
+  padding: 14px;
+}
+
+.correction-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.correction-form label span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .correction-form input,
 .correction-form select {
-  min-height: 38px;
-  padding: 8px 10px;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
   font-size: 14px;
 }
 
 .correction-form button {
-  min-height: 38px;
+  grid-column: 4;
+  min-height: 40px;
   padding: 0 14px;
   font-size: 14px;
   white-space: nowrap;
+}
+
+.empty-log {
+  margin: 0;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  background: #fbfcff;
+  color: var(--muted);
+  padding: 14px;
+  font-size: 14px;
+  text-align: left;
 }
 
 .import-panel form {
@@ -876,6 +905,10 @@ textarea {
     grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
   }
 
+  .workflow-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .import-panel {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -916,6 +949,10 @@ textarea {
   .queue-panel {
     position: static;
     max-height: none;
+  }
+
+  .correction-form button {
+    grid-column: auto;
   }
 
   .import-panel .compact-section {

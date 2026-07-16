@@ -975,7 +975,7 @@ function App() {
       <main className="workspace-grid">
         <aside className="queue-panel">
           <div className="panel-heading">
-            <h2>E-posta Kuyruğu</h2>
+            <h2>Gelen E-postalar</h2>
             <span>
               {visibleEmails.length}/{emails.length} kayıt
             </span>
@@ -996,7 +996,7 @@ function App() {
 
           <div className="queue-controls">
             <input
-              aria-label="E-posta kuyruğunda ara"
+              aria-label="Gelen e-postalarda ara"
               placeholder="Konu, gönderen veya kutu ara"
               value={queueSearch}
               onChange={(event) => setQueueSearch(event.target.value)}
@@ -1392,58 +1392,70 @@ function App() {
                     </div>
                   </section>
 
-                  <section className="section-block">
-                    <h3>Yanlış Yönlendirme Düzelt</h3>
+                  <section className="section-block correction-section">
+                    <h3>Yönlendirme Düzeltme</h3>
                     <form className="correction-form" onSubmit={handleCorrectRouting}>
-                      <select
-                        value={correctionForm.corrected_category}
-                        onChange={(event) =>
-                          setCorrectionForm({
-                            ...correctionForm,
-                            corrected_category: event.target.value,
-                          })
-                        }
-                      >
-                        {CATEGORY_OPTIONS.map((category) => (
-                          <option key={category}>{category}</option>
-                        ))}
-                      </select>
-                      <select
-                        value={correctionForm.corrected_department}
-                        onChange={(event) =>
-                          setCorrectionForm({
-                            ...correctionForm,
-                            corrected_department: event.target.value,
-                          })
-                        }
-                      >
-                        {DEPARTMENT_OPTIONS.map((department) => (
-                          <option key={department}>{department}</option>
-                        ))}
-                      </select>
-                      <select
-                        value={correctionForm.corrected_priority}
-                        onChange={(event) =>
-                          setCorrectionForm({
-                            ...correctionForm,
-                            corrected_priority: event.target.value,
-                          })
-                        }
-                      >
-                        {PRIORITY_OPTIONS.map((priority) => (
-                          <option key={priority}>{priority}</option>
-                        ))}
-                      </select>
-                      <input
-                        value={correctionForm.feedback_note}
-                        onChange={(event) =>
-                          setCorrectionForm({
-                            ...correctionForm,
-                            feedback_note: event.target.value,
-                          })
-                        }
-                        placeholder="Geri bildirim notu"
-                      />
+                      <label>
+                        <span>Kategori</span>
+                        <select
+                          value={correctionForm.corrected_category}
+                          onChange={(event) =>
+                            setCorrectionForm({
+                              ...correctionForm,
+                              corrected_category: event.target.value,
+                            })
+                          }
+                        >
+                          {CATEGORY_OPTIONS.map((category) => (
+                            <option key={category}>{category}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        <span>Birim</span>
+                        <select
+                          value={correctionForm.corrected_department}
+                          onChange={(event) =>
+                            setCorrectionForm({
+                              ...correctionForm,
+                              corrected_department: event.target.value,
+                            })
+                          }
+                        >
+                          {DEPARTMENT_OPTIONS.map((department) => (
+                            <option key={department}>{department}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        <span>Öncelik</span>
+                        <select
+                          value={correctionForm.corrected_priority}
+                          onChange={(event) =>
+                            setCorrectionForm({
+                              ...correctionForm,
+                              corrected_priority: event.target.value,
+                            })
+                          }
+                        >
+                          {PRIORITY_OPTIONS.map((priority) => (
+                            <option key={priority}>{priority}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        <span>Not</span>
+                        <input
+                          value={correctionForm.feedback_note}
+                          onChange={(event) =>
+                            setCorrectionForm({
+                              ...correctionForm,
+                              feedback_note: event.target.value,
+                            })
+                          }
+                          placeholder="Geri bildirim notu"
+                        />
+                      </label>
                       <button
                         disabled={!can("correct_routing")}
                         type="submit"
@@ -1456,7 +1468,7 @@ function App() {
                   <section className="section-block">
                     <h3>İşlem Günlüğü</h3>
                     {logs.length === 0 ? (
-                      <p className="muted">Bu kayıt için işlem günlüğü yok.</p>
+                      <p className="empty-log">Bu kayıt için işlem günlüğü yok.</p>
                     ) : (
                       logs.slice(0, 6).map((log) => (
                         <div className="log-row" key={log.id}>
