@@ -2,6 +2,10 @@
 
 Kuruma gelen e-postaları konu, öncelik, risk ve ilgili birim açısından analiz eden; güven skoru, insan onayı, yönlendirme, geri bildirim, ek dosya risk analizi ve operasyon dashboard'u sunan MVP uygulaması.
 
+## Amaç
+
+SmartMail Router, kurumsal ortak posta kutularına gelen mailleri otomatik olarak ön incelemeden geçirip doğru kategoriye, ilgili birime ve uygun öncelik seviyesine yönlendirmeyi hedefler. Sistem özellikle yoğun evrak, başvuru, şikayet, KVKK, tebligat ve teknik destek trafiği olan kurumlarda operatör yükünü azaltmak için tasarlanmıştır.
+
 ## MVP Kapsamı
 
 - Sentetik e-posta verisi ile ortak posta kutusu simülasyonu
@@ -23,6 +27,51 @@ Kuruma gelen e-postaları konu, öncelik, risk ve ilgili birim açısından anal
 - React Flow ile mail iş akışı görselleştirme
 - Audit log ve operasyon dashboard'u
 - React tabanlı admin/operatör paneli
+
+## Mimari
+
+Proje üç ana parçadan oluşur:
+
+- `frontend`: React + Vite tabanlı operatör paneli.
+- `backend`: FastAPI servisleri, sınıflandırma, analiz, routing, feedback ve model eğitimi API'leri.
+- `database`: PostgreSQL üzerinde e-posta, sınıflandırma, feedback ve audit log kayıtları.
+
+Genel akış:
+
+1. Sentetik veya manuel girilen mail backend'e alınır.
+2. Ön işleme servisi konu, gövde, kaynak posta kutusu ve ek metinlerinden sınıflandırma metni üretir.
+3. Kural tabanlı sınıflandırma kategori, birim, öncelik ve insan onayı ihtiyacını belirler.
+4. Analiz servisleri risk, cevap ihtiyacı, SLA durumu ve yönlendirme önerisi üretir.
+5. Operatör paneli mail kuyruğu, detay analizi, React Flow iş akışı ve operasyon metriklerini gösterir.
+6. Operatör düzeltme yaparsa feedback kaydı oluşur ve bu kayıt eğitim verisine katılır.
+
+## AI / ML Yaklaşımı
+
+Bu MVP'de üç katmanlı bir yaklaşım kullanılır:
+
+- Kural tabanlı sınıflandırma: Anahtar kelime ve bağlam kurallarıyla hızlı, açıklanabilir karar üretir.
+- Mock AI ikinci görüş: Gerçek LLM entegrasyonu yerine demo amaçlı ikinci karar katmanı sunar.
+- Eğitilebilir lokal model: Seed veri ve feedback kayıtlarından `TF-IDF + Logistic Regression` modeli eğitilir.
+
+Lokal model gerçek bir makine öğrenmesi modelidir, fakat LLM fine-tune değildir. Mail metinleri TF-IDF ile sayısal özelliklere çevrilir; model kategori, birim ve öncelik için ayrı tahminler üretir. Eğitilmiş model `backend/model_artifacts/` altında saklanır ve bu klasör git'e eklenmez.
+
+Model API'leri:
+
+- `GET /emails/model/status`
+- `POST /emails/model/train`
+- `GET /emails/{email_id}/model-prediction`
+
+Bu yaklaşım, az veriyle çalışabilen, yerelde koşan ve veri gizliliği açısından daha kontrollü bir eğitim mekanizması sağlar. İleride veri seti büyüdüğünde gerçek LLM entegrasyonu veya fine-tune akışı eklenebilir.
+
+## Öne Çıkan Modüller
+
+- E-posta alma: Sentetik veri ve manuel mail girişi.
+- Sınıflandırma: Kategori, departman, öncelik ve güven skoru.
+- SLA takibi: Kategoriye göre son tarih ve gecikme durumu.
+- Ek analizi: PDF, DOCX, TXT ve CSV dosyalarından metin çıkarma.
+- Feedback: Yanlış yönlendirme düzeltmesi ve eğitim verisi üretimi.
+- Rol bazlı yetki: Admin, operatör, birim kullanıcısı ve izleyici rolleri.
+- Operasyon dashboard'u: Metrikler, dağılımlar, filtreler ve audit log.
 
 ## Çalıştırma
 
@@ -94,3 +143,12 @@ Frontend rol seçimine göre butonları aktif/pasif yapar. Backend de aynı aksi
 ## Notlar
 
 Bu sürüm gerçek IMAP/Exchange bağlantısı ve gerçek OCR yerine sentetik veri kullanır. PDF/DOCX/TXT/CSV eklerinden metin çıkarma desteklenir; görsel/taranmış belgeler için OCR entegrasyonu ileriki aşamaya bırakılmıştır. Mimari bu servislerin ileride gerçek connector, OCR ve LLM servisleriyle değiştirilmesine uygun olacak şekilde ayrıştırılmıştır.
+
+## Geliştirilebilir Alanlar
+
+- Gerçek IMAP, Exchange veya Microsoft Graph bağlantısı.
+- Taranmış PDF ve görseller için OCR entegrasyonu.
+- Daha büyük etiketli veri setiyle model başarım ölçümü.
+- LLM tabanlı özetleme, cevap üretimi ve karar açıklaması.
+- Departman bazlı kullanıcı yönetimi ve gerçek kimlik doğrulama.
+- SLA politikalarının admin panelinden düzenlenebilmesi.
