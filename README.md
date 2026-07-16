@@ -14,6 +14,7 @@ Kuruma gelen e-postaları konu, öncelik, risk ve ilgili birim açısından anal
 - Cevap önerisi taslağı
 - Yanlış yönlendirme düzeltme ve feedback kaydı
 - Feedback kayıtlarından training JSONL dışa aktarma
+- Admin, operatör, birim kullanıcısı ve izleyici rolleriyle rol bazlı yetki kontrolü
 - React Flow ile mail iş akışı görselleştirme
 - Audit log ve operasyon dashboard'u
 - React tabanlı admin/operatör paneli
@@ -59,9 +60,21 @@ API dokümantasyonu: http://127.0.0.1:8000/docs
 4. Ek yükleme alanından PDF/DOCX/TXT/CSV dosyası yükleyip çıkan metnin sınıflandırmaya katıldığını göster.
 5. React Flow iş akışında mailin hangi aşamalardan geçtiğini göster.
 6. Onay bekleyen maili `Onayla` veya `Yönlendir` aksiyonuyla işleme al.
-7. Yanlış yönlendirme simülasyonu için düzeltme formundan yeni kategori/birim seçip feedback kaydet.
-8. Eğitim verisi bölümünden feedback sayısını ve JSONL çıktısını göster.
-9. Manuel sentetik mail formuna kısa bir örnek girerek sistemin yeni maili otomatik işlemesini göster.
+7. Aktif rolü `İzleyici` yaparak aksiyon butonlarının kapandığını, `Operatör` rolünde tekrar açıldığını göster.
+8. Yanlış yönlendirme simülasyonu için düzeltme formundan yeni kategori/birim seçip feedback kaydet.
+9. Eğitim verisi bölümünden feedback sayısını ve JSONL çıktısını göster.
+10. Manuel sentetik mail formuna kısa bir örnek girerek sistemin yeni maili otomatik işlemesini göster.
+
+## Rol Bazlı Yetki
+
+MVP'de dört rol bulunur:
+
+- `admin`: tüm operasyonel işlemleri yapabilir.
+- `operator`: mail işleme, ek yükleme, onay, yönlendirme ve feedback işlemlerini yapabilir.
+- `department_user`: dashboard ve eğitim verisini görüntüleyebilir.
+- `viewer`: yalnızca dashboard/analiz ekranlarını görüntüler.
+
+Frontend rol seçimine göre butonları aktif/pasif yapar. Backend de aynı aksiyonlarda rol izni kontrol eder ve yetkisiz isteklerde `403 Forbidden` döndürür.
 
 ## Notlar
 

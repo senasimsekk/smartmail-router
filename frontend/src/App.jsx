@@ -48,6 +48,49 @@ const DEPARTMENT_OPTIONS = [
 
 const PRIORITY_OPTIONS = ["Kritik", "Yüksek", "Normal", "Düşük"];
 
+const ROLE_OPTIONS = [
+  {
+    role: "admin",
+    label: "Admin",
+    department: "Tüm birimler",
+    permissions: [
+      "import_email",
+      "process_email",
+      "upload_attachment",
+      "approve_routing",
+      "route_email",
+      "correct_routing",
+      "view_training_data",
+    ],
+  },
+  {
+    role: "operator",
+    label: "Operatör",
+    department: "Evrak/operasyon",
+    permissions: [
+      "import_email",
+      "process_email",
+      "upload_attachment",
+      "approve_routing",
+      "route_email",
+      "correct_routing",
+      "view_training_data",
+    ],
+  },
+  {
+    role: "department_user",
+    label: "Birim Kullanıcısı",
+    department: "İlgili Uzman Daire",
+    permissions: ["view_training_data"],
+  },
+  {
+    role: "viewer",
+    label: "İzleyici",
+    department: "Raporlama",
+    permissions: [],
+  },
+];
+
 const WORKFLOW_STEP_POSITIONS = [
   { id: "received", x: 0, y: 80 },
   { id: "preprocess", x: 210, y: 80 },
@@ -69,6 +112,10 @@ function formatPercent(value) {
 
 function getStatusLabel(status) {
   return status || "New";
+}
+
+function getRolePolicy(role) {
+  return ROLE_OPTIONS.find((option) => option.role === role) || ROLE_OPTIONS[1];
 }
 
 function getWorkflowStatusClass(status) {
@@ -223,10 +270,19 @@ function App() {
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [actionMessage, setActionMessage] = useState("");
+  const [activeRole, setActiveRole] = useState("operator");
 
   const selectedEmail = useMemo(
     () => emails.find((email) => email.id === selectedEmailId) || null,
     [emails, selectedEmailId]
+  );
+  const activeRolePolicy = useMemo(
+    () => getRolePolicy(activeRole),
+    [activeRole]
+  );
+  const can = useCallback(
+    (permission) => activeRolePolicy.permissions.includes(permission),
+    [activeRolePolicy]
   );
 
   const request = useCallback(async function request(path, options = {}) {
@@ -328,8 +384,13 @@ function App() {
       return;
     }
 
+    if (!can("process_email")) {
+      setActionMessage("Bu rol mail işleme yetkisine sahip değil.");
+      return;
+    }
+
     await runEmailAction(
-      `/emails/${selectedEmail.id}/process`,
+      `/emails/${selectedEmail.id}/process?actor_role=${activeRole}`,
       { method: "POST" },
       "Mail işlendi ve sınıflandırma kaydedildi."
     );
@@ -340,12 +401,18 @@ function App() {
       return;
     }
 
+    if (!can("approve_routing")) {
+      setActionMessage("Bu rol yönlendirme onayı veremez.");
+      return;
+    }
+
     await runEmailAction(
       `/emails/${selectedEmail.id}/approve-routing`,
       {
         method: "POST",
         body: JSON.stringify({
           approved_by: "operator",
+          actor_role: activeRole,
           approved_department:
             details?.analysis?.classification?.department || undefined,
           routing_note: "Operatör panelinden onaylandı.",
@@ -360,12 +427,18 @@ function App() {
       return;
     }
 
+    if (!can("route_email")) {
+      setActionMessage("Bu rol mail yönlendiremez.");
+      return;
+    }
+
     await runEmailAction(
       `/emails/${selectedEmail.id}/route`,
       {
         method: "POST",
         body: JSON.stringify({
           routed_by: "operator",
+          actor_role: activeRole,
           target_department:
             details?.analysis?.classification?.department || undefined,
           routing_note: "Panel üzerinden ilgili birim havuzuna aktarıldı.",
@@ -382,6 +455,11 @@ function App() {
       return;
     }
 
+    if (!can("correct_routing")) {
+      setActionMessage("Bu rol yanlış yönlendirme düzeltmesi yapamaz.");
+      return;
+    }
+
     await runEmailAction(
       `/emails/${selectedEmail.id}/correct-routing`,
       {
@@ -389,6 +467,7 @@ function App() {
         body: JSON.stringify({
           ...correctionForm,
           corrected_by: "operator",
+          actor_role: activeRole,
         }),
       },
       "Düzeltme kaydedildi ve geri bildirim eğitim verisine eklendi."
@@ -417,6 +496,11 @@ function App() {
     setActionMessage("");
     setErrorMessage("");
 
+    if (!can("import_email")) {
+      setActionMessage("Bu rol manuel mail içe aktaramaz.");
+      return;
+    }
+
     const attachmentNames = importForm.attachment_names
       .split(",")
       .map((name) => name.trim())
@@ -429,6 +513,7 @@ function App() {
           ...importForm,
           has_attachment: attachmentNames.length > 0 || importForm.has_attachment,
           attachment_names: attachmentNames,
+          actor_role: activeRole,
         }),
       });
 
@@ -449,11 +534,18 @@ function App() {
       return;
     }
 
+    if (!can("upload_attachment")) {
+      setActionMessage("Bu rol ek dosya yükleyemez.");
+      return;
+    }
+
     setActionMessage("");
     setErrorMessage("");
 
     const formData = new FormData();
     formData.append("file", selectedAttachmentFile);
+    formData.append("uploaded_by", activeRolePolicy.label);
+    formData.append("actor_role", activeRole);
 
     try {
       const response = await fetch(
@@ -512,6 +604,11 @@ function App() {
   }
 
   function handleDownloadTrainingJsonl() {
+    if (!can("view_training_data")) {
+      setActionMessage("Bu rol eğitim verisi dışa aktaramaz.");
+      return;
+    }
+
     const jsonl = buildTrainingJsonl();
 
     if (!jsonl) {
@@ -561,9 +658,24 @@ function App() {
           <p className="eyebrow">Kurumsal E-posta Sınıflandırma</p>
           <h1>SmartMail Router</h1>
         </div>
-        <button className="secondary-button" onClick={refreshWorkspace}>
-          Yenile
-        </button>
+        <div className="topbar-actions">
+          <label className="role-selector">
+            Aktif Rol
+            <select
+              value={activeRole}
+              onChange={(event) => setActiveRole(event.target.value)}
+            >
+              {ROLE_OPTIONS.map((roleOption) => (
+                <option key={roleOption.role} value={roleOption.role}>
+                  {roleOption.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button className="secondary-button" onClick={refreshWorkspace}>
+            Yenile
+          </button>
+        </div>
       </header>
 
       {errorMessage && <div className="alert danger">{errorMessage}</div>}
@@ -592,6 +704,16 @@ function App() {
           value={operationalDashboard?.routing_status_distribution?.Routed ?? 0}
         />
         <Metric label="Feedback" value={feedbackData.feedback_count ?? 0} />
+      </section>
+
+      <section className="role-banner">
+        <strong>{activeRolePolicy.label}</strong>
+        <span>{activeRolePolicy.department}</span>
+        <p>
+          {activeRolePolicy.permissions.length > 0
+            ? `Yetkiler: ${activeRolePolicy.permissions.join(", ")}`
+            : "Bu rol yalnızca görüntüleme amaçlıdır."}
+        </p>
       </section>
 
       <main className="workspace-grid">
@@ -655,9 +777,24 @@ function App() {
                   <h2>{selectedEmail.subject}</h2>
                 </div>
                 <div className="button-row">
-                  <button onClick={handleProcessEmail}>İşle</button>
-                  <button onClick={handleApproveRouting}>Onayla</button>
-                  <button onClick={handleRouteEmail}>Yönlendir</button>
+                  <button
+                    disabled={!can("process_email")}
+                    onClick={handleProcessEmail}
+                  >
+                    İşle
+                  </button>
+                  <button
+                    disabled={!can("approve_routing")}
+                    onClick={handleApproveRouting}
+                  >
+                    Onayla
+                  </button>
+                  <button
+                    disabled={!can("route_email")}
+                    onClick={handleRouteEmail}
+                  >
+                    Yönlendir
+                  </button>
                 </div>
               </div>
 
@@ -761,7 +898,12 @@ function App() {
                           )
                         }
                       />
-                      <button type="submit">Ek Yükle ve Oku</button>
+                      <button
+                        disabled={!can("upload_attachment")}
+                        type="submit"
+                      >
+                        Ek Yükle ve Oku
+                      </button>
                     </form>
 
                     {!attachmentAnalysis.has_attachments ? (
@@ -943,7 +1085,12 @@ function App() {
                         }
                         placeholder="Geri bildirim notu"
                       />
-                      <button type="submit">Düzeltmeyi Kaydet</button>
+                      <button
+                        disabled={!can("correct_routing")}
+                        type="submit"
+                      >
+                        Düzeltmeyi Kaydet
+                      </button>
                     </form>
                   </section>
 
@@ -1027,7 +1174,9 @@ function App() {
                 }
               />
             </label>
-            <button type="submit">Maili İçe Aktar</button>
+            <button disabled={!can("import_email")} type="submit">
+              Maili İçe Aktar
+            </button>
           </form>
 
           <div className="compact-section">
@@ -1047,6 +1196,7 @@ function App() {
               <h3>Eğitim Verisi</h3>
               <button
                 className="secondary-button small-button"
+                disabled={!can("view_training_data")}
                 type="button"
                 onClick={handleDownloadTrainingJsonl}
               >

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from typing import  Optional
@@ -17,6 +17,10 @@ from app.services.email_processing_service import process_email_by_id
 from app.services.dashboard_service import get_operational_dashboard_summary
 from app.services.attachment_text_extraction_service import (
     save_attachment_and_extract_text,
+)
+from app.services.authorization_service import (
+    get_available_roles,
+    role_has_permission,
 )
 from app.services.email_db_service import (
     email_to_dict,
@@ -61,8 +65,10 @@ class ManualEmailImportRequest(BaseModel):
     source_mailbox: Optional[str] = "webmaster@rekabet.gov.tr"
     has_attachment:bool = False
     attachment_names: list[str] = Field(default_factory=list)
+    actor_role: str = "operator"
 class ApproveRoutingRequest(BaseModel):
     approved_by: str
+    actor_role: str = "operator"
     approved_department: Optional[str] = None
     routing_note: Optional[str] = None
 
@@ -72,20 +78,41 @@ class CorrectRoutingRequest(BaseModel):
     corrected_department: str
     corrected_priority: str
     corrected_by: str
+    actor_role: str = "operator"
     feedback_note: Optional[str] = None
 
 class RouteEmailRequest(BaseModel):
     routed_by: str
+    actor_role: str = "operator"
     target_department: Optional[str] = None
     routing_note: Optional[str] = None
+
+
+def require_permission(actor_role: str, permission: str):
+    if not role_has_permission(actor_role, permission):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Role '{actor_role}' is not allowed to perform '{permission}'.",
+        )
+
+
+@router.get("/auth/roles")
+def get_roles():
+    return {
+        "roles": get_available_roles(),
+    }
 
 
 @router.post("/{email_id:int}/attachments/upload")
 async def upload_email_attachment(
     email_id: int,
     file: UploadFile = File(...),
+    uploaded_by: str = Form("operator"),
+    actor_role: str = Form("operator"),
     db: Session = Depends(get_db),
 ):
+    require_permission(actor_role, "upload_attachment")
+
     file_content = await file.read()
 
     result = save_attachment_and_extract_text(
@@ -93,7 +120,7 @@ async def upload_email_attachment(
         email_id=email_id,
         filename=file.filename or "attachment",
         file_content=file_content,
-        uploaded_by="operator",
+        uploaded_by=uploaded_by,
     )
 
     if not result:
@@ -108,6 +135,8 @@ def route_email(
     email_id: int,
     db: Session = Depends(get_db)
 ):
+    require_permission(request.actor_role, "route_email")
+
     result = route_email_to_department(
         db=db,
         email_id=email_id,
@@ -274,10 +303,13 @@ def add_feedback_for_email(
     corrected_category: str,
     corrected_department: str,
     corrected_priority: str,
+    actor_role: str = "operator",
     feedback_note: str | None = None,
     created_by: str | None = None,
     db: Session = Depends(get_db),
 ):
+    require_permission(actor_role, "create_feedback")
+
     email_record = get_email_by_id_from_db(db, email_id)
 
     if email_record is None:
@@ -378,6 +410,8 @@ def approve_routing(
     request: ApproveRoutingRequest,
     db: Session = Depends(get_db),
 ):
+    require_permission(request.actor_role, "approve_routing")
+
     result = approve_email_routing(
         db=db,
         email_id=email_id,
@@ -397,6 +431,8 @@ def correct_routing(
     request: CorrectRoutingRequest,
     db: Session = Depends(get_db),
 ):
+    require_permission(request.actor_role, "correct_routing")
+
     result = correct_email_routing(
         db=db,
         email_id=email_id,
@@ -416,6 +452,8 @@ def manual_email_import(
     request: ManualEmailImportRequest,
     db: Session = Depends(get_db),
 ):
+    require_permission(request.actor_role, "import_email")
+
     created_email = create_email_from_manual_import(
         db=db,
         subject=request.subject,
@@ -439,8 +477,11 @@ def manual_email_import(
 @router.post("/{email_id:int}/process")
 def process_email(
     email_id: int,
+    actor_role: str = "operator",
     db: Session = Depends(get_db),
 ):
+    require_permission(actor_role, "process_email")
+
     result = process_email_by_id(
         db=db,
         email_id=email_id,
@@ -510,7 +551,13 @@ def preprocess_email_by_id(email_id: int, db: Session = Depends(get_db)):
  
 
 @router.post("/{email_id:int}/classify")
-def classify_email_by_id(email_id: int, db: Session = Depends(get_db)):
+def classify_email_by_id(
+    email_id: int,
+    actor_role: str = "operator",
+    db: Session = Depends(get_db),
+):
+    require_permission(actor_role, "process_email")
+
     email_record = get_email_by_id_from_db(db, email_id)
 
     if email_record is None:

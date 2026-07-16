@@ -47,6 +47,13 @@ button:hover {
   background: var(--brand-dark);
 }
 
+button:disabled {
+  border-color: #cbd5e1;
+  background: #e2e8f0;
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
 input,
 textarea,
 select {
@@ -80,6 +87,21 @@ textarea {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 16px;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+}
+
+.role-selector {
+  display: grid;
+  gap: 6px;
+  min-width: 210px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .topbar h1,
@@ -133,6 +155,34 @@ textarea {
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 16px;
+}
+
+.role-banner {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  border: 1px solid #9ab7dc;
+  border-radius: 8px;
+  background: #edf4fb;
+  padding: 12px 14px;
+}
+
+.role-banner strong {
+  color: var(--brand-dark);
+}
+
+.role-banner span {
+  color: var(--brand);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.role-banner p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.4;
 }
 
 .metric-card,
@@ -598,6 +648,13 @@ textarea {
   .topbar,
   .detail-header {
     align-items: stretch;
+    flex-direction: column;
+  }
+
+  .topbar-actions,
+  .role-banner {
+    align-items: stretch;
+    grid-template-columns: 1fr;
     flex-direction: column;
   }
 
