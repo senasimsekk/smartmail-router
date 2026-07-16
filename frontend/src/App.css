@@ -469,6 +469,69 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+.workflow-canvas {
+  width: 100%;
+  height: 330px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+  overflow: hidden;
+}
+
+.workflow-canvas .react-flow__controls {
+  box-shadow: 0 4px 12px rgba(16, 42, 67, 0.12);
+}
+
+.workflow-node {
+  width: 168px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text);
+  box-shadow: 0 4px 12px rgba(16, 42, 67, 0.08);
+}
+
+.workflow-node div {
+  display: grid;
+  gap: 6px;
+}
+
+.workflow-node strong {
+  font-size: 13px;
+  color: var(--brand-dark);
+}
+
+.workflow-node span {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.workflow-node.complete {
+  border-color: #8fc9bd;
+  background: #eefcf9;
+}
+
+.workflow-node.active {
+  border-color: #9ab7dc;
+  background: #edf4fb;
+}
+
+.workflow-node.review {
+  border-color: #f2b8b5;
+  background: #fff2f1;
+}
+
+.workflow-node.skipped,
+.workflow-node.waiting {
+  border-color: #d8dee8;
+  background: #f4f6f8;
+}
+
+.workflow-node.review strong {
+  color: var(--danger);
+}
+
 .empty-state {
   min-height: 320px;
   display: grid;

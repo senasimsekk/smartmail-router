@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Background,
+  Controls,
+  MarkerType,
+  Position,
+  ReactFlow,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 import "./App.css";
 
 const API_BASE_URL = "http://127.0.0.1:8000";
@@ -40,6 +48,17 @@ const DEPARTMENT_OPTIONS = [
 
 const PRIORITY_OPTIONS = ["Kritik", "Yüksek", "Normal", "Düşük"];
 
+const WORKFLOW_STEP_POSITIONS = [
+  { id: "received", x: 0, y: 80 },
+  { id: "preprocess", x: 210, y: 80 },
+  { id: "attachments", x: 420, y: 80 },
+  { id: "classification", x: 630, y: 80 },
+  { id: "confidence", x: 840, y: 80 },
+  { id: "review", x: 1050, y: 0 },
+  { id: "routing", x: 1260, y: 80 },
+  { id: "closed", x: 1470, y: 80 },
+];
+
 function formatPercent(value) {
   if (typeof value !== "number") {
     return "-";
@@ -50,6 +69,130 @@ function formatPercent(value) {
 
 function getStatusLabel(status) {
   return status || "New";
+}
+
+function getWorkflowStatusClass(status) {
+  if (["Routed", "Approved", "Classified", "Corrected"].includes(status)) {
+    return "complete";
+  }
+
+  if (status === "Pending Review") {
+    return "review";
+  }
+
+  return "active";
+}
+
+function createWorkflowNode(id, label, detail, state) {
+  const position = WORKFLOW_STEP_POSITIONS.find((step) => step.id === id);
+
+  return {
+    id,
+    position: { x: position.x, y: position.y },
+    sourcePosition: Position.Right,
+    targetPosition: Position.Left,
+    className: `workflow-node ${state}`,
+    data: {
+      label: (
+        <div>
+          <strong>{label}</strong>
+          <span>{detail}</span>
+        </div>
+      ),
+    },
+  };
+}
+
+function buildWorkflowGraph(email, classification, analysis, attachmentAnalysis) {
+  const routingStatus = getStatusLabel(email?.routing_status);
+  const confidence = classification.confidence_score || 0;
+  const needsReview = Boolean(classification.requires_human_review);
+  const hasAttachment = Boolean(email?.has_attachment);
+  const isRouted = routingStatus === "Routed";
+  const isClosed = ["Completed", "Archived"].includes(routingStatus);
+
+  const nodes = [
+    createWorkflowNode(
+      "received",
+      "Mail Alındı",
+      email?.source_mailbox || "Kaynak kutu bekleniyor",
+      "complete"
+    ),
+    createWorkflowNode(
+      "preprocess",
+      "Ön İşleme",
+      "HTML, imza ve gereksiz metin temizlenir",
+      "complete"
+    ),
+    createWorkflowNode(
+      "attachments",
+      "Ek Analizi",
+      hasAttachment
+        ? `${attachmentAnalysis.attachment_count || 0} ek kontrol edildi`
+        : "Ek yok, adım atlandı",
+      hasAttachment ? "complete" : "skipped"
+    ),
+    createWorkflowNode(
+      "classification",
+      "Sınıflandırma",
+      classification.category || "Kategori hesaplanıyor",
+      classification.category ? "complete" : "active"
+    ),
+    createWorkflowNode(
+      "confidence",
+      "Güven Skoru",
+      confidence ? formatPercent(confidence) : "Skor bekleniyor",
+      confidence >= 0.85 ? "complete" : "review"
+    ),
+    createWorkflowNode(
+      "review",
+      "İnsan Onayı",
+      needsReview ? "Operatör kontrolü gerekli" : "Otomatik geçiş uygun",
+      needsReview ? getWorkflowStatusClass(routingStatus) : "skipped"
+    ),
+    createWorkflowNode(
+      "routing",
+      "Birim Yönlendirme",
+      isRouted
+        ? email?.approved_department || classification.department
+        : analysis.routing_decision?.primary_department ||
+          classification.department ||
+          "Birim bekleniyor",
+      isRouted ? "complete" : "active"
+    ),
+    createWorkflowNode(
+      "closed",
+      "Kapanış",
+      isClosed ? "Süreç kapandı" : "Cevap ve sonuç bekleniyor",
+      isClosed ? "complete" : "waiting"
+    ),
+  ];
+
+  const edges = [
+    ["received", "preprocess"],
+    ["preprocess", "attachments"],
+    ["attachments", "classification"],
+    ["classification", "confidence"],
+    ["confidence", "review"],
+    ["review", "routing"],
+    ["routing", "closed"],
+  ].map(([source, target]) => ({
+    id: `${source}-${target}`,
+    source,
+    target,
+    type: "smoothstep",
+    animated: target === "review" && needsReview,
+    markerEnd: {
+      type: MarkerType.ArrowClosed,
+      color: needsReview && target === "review" ? "#b42318" : "#1f4e79",
+    },
+    style: {
+      stroke: needsReview && target === "review" ? "#b42318" : "#1f4e79",
+      strokeWidth: 2,
+    },
+  }));
+
+  return { nodes, edges };
 }
 
 function App() {
@@ -85,17 +228,7 @@ function App() {
     [emails, selectedEmailId]
   );
 
-  useEffect(() => {
-    refreshWorkspace();
-  }, []);
-
-  useEffect(() => {
-    if (selectedEmailId) {
-      fetchEmailDetails(selectedEmailId);
-    }
-  }, [selectedEmailId]);
-
-  async function request(path, options = {}) {
+  const request = useCallback(async function request(path, options = {}) {
     const response = await fetch(`${API_BASE_URL}${path}`, {
       headers: {
         "Content-Type": "application/json",
@@ -109,9 +242,9 @@ function App() {
     }
 
     return response.json();
-  }
+  }, []);
 
-  async function refreshWorkspace() {
+  const refreshWorkspace = useCallback(async function refreshWorkspace() {
     setErrorMessage("");
 
     try {
@@ -139,17 +272,17 @@ function App() {
       setFeedbackData(feedbackResult);
       setTrainingData(trainingResult);
 
-      if (!selectedEmailId && emailData.emails?.length) {
-        setSelectedEmailId(emailData.emails[0].id);
-      }
+      setSelectedEmailId((currentEmailId) =>
+        currentEmailId || emailData.emails?.[0]?.id || null
+      );
     } catch (error) {
       setErrorMessage(error.message);
     } finally {
       setLoading(false);
     }
-  }
+  }, [request]);
 
-  async function fetchEmailDetails(emailId) {
+  const fetchEmailDetails = useCallback(async function fetchEmailDetails(emailId) {
     setDetailsLoading(true);
     setActionMessage("");
 
@@ -173,7 +306,21 @@ function App() {
     } finally {
       setDetailsLoading(false);
     }
-  }
+  }, [request]);
+
+  useEffect(() => {
+    // Initial API load is intentionally triggered when the app mounts.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    refreshWorkspace();
+  }, [refreshWorkspace]);
+
+  useEffect(() => {
+    if (selectedEmailId) {
+      // Selected mail changes should fetch fresh derived analysis data.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      fetchEmailDetails(selectedEmailId);
+    }
+  }, [fetchEmailDetails, selectedEmailId]);
 
   async function handleProcessEmail() {
     if (!selectedEmail) {
@@ -358,6 +505,12 @@ function App() {
   const aiAnalysis = details?.aiAnalysis?.ai_analysis || {};
   const ruleBasedClassification = aiAnalysis.rule_based_classification || {};
   const mockAiClassification = aiAnalysis.mock_ai_classification || {};
+  const workflowGraph = buildWorkflowGraph(
+    selectedEmail,
+    classification,
+    analysis,
+    attachmentAnalysis
+  );
 
   if (loading) {
     return <div className="page-loading">SmartMail Router yükleniyor...</div>;
@@ -636,6 +789,29 @@ function App() {
                             ?.final_decision_source
                         }
                       />
+                    </div>
+                  </section>
+
+                  <section className="section-block">
+                    <div className="panel-heading">
+                      <h3>İş Akışı</h3>
+                      <span>{getStatusLabel(selectedEmail.routing_status)}</span>
+                    </div>
+                    <div className="workflow-canvas">
+                      <ReactFlow
+                        nodes={workflowGraph.nodes}
+                        edges={workflowGraph.edges}
+                        fitView
+                        fitViewOptions={{ padding: 0.18 }}
+                        nodesDraggable={false}
+                        nodesConnectable={false}
+                        elementsSelectable={false}
+                        panOnScroll
+                        proOptions={{ hideAttribution: true }}
+                      >
+                        <Background gap={18} size={1} />
+                        <Controls showInteractive={false} />
+                      </ReactFlow>
                     </div>
                   </section>
 
