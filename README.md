@@ -57,6 +57,15 @@ npm run dev -- --host 127.0.0.1 --port 5173
 Uygulama: http://127.0.0.1:5173  
 API dokümantasyonu: http://127.0.0.1:8000/docs
 
+## Test
+
+Backend servis testlerini çalıştır:
+
+```bash
+cd backend
+.venv/bin/python -m unittest discover -s tests
+```
+
 ## Demo Akışı
 
 1. Dashboard metriklerinden toplam mail, kritik risk, insan onayı, doğruluk oranı ve operasyon dağılımlarını göster.
