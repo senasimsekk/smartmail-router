@@ -76,7 +76,7 @@ class RouteEmailRequest(BaseModel):
     target_department: Optional[str] = None
     routing_note: Optional[str] = None
 
-@router.post("/{email_id}/route")
+@router.post("/{email_id:int}/route")
 def route_email(
     request: RouteEmailRequest,
     email_id: int,
@@ -190,7 +190,7 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
         "operation_type_distribution": dict(operation_type_counter),
         "risk_level_distribution": dict(risk_level_counter),
     }
-@router.get("/{email_id}/ai-analysis")
+@router.get("/{email_id:int}/ai-analysis")
 def get_email_ai_analysis(email_id: int, db: Session = Depends(get_db)):
     email_record = get_email_by_id_from_db(db, email_id)
 
@@ -211,7 +211,7 @@ def get_email_ai_analysis(email_id: int, db: Session = Depends(get_db)):
         "sender": email["sender"],
         "ai_analysis": ai_analysis,
     }
-@router.get("/{email_id}/response-suggestion")
+@router.get("/{email_id:int}/response-suggestion")
 def get_response_suggestion(email_id: int, db: Session = Depends(get_db)):
     email_record = get_email_by_id_from_db(db, email_id)
 
@@ -242,7 +242,7 @@ def get_response_suggestion(email_id: int, db: Session = Depends(get_db)):
         "operation_type": analysis["operation_type"],
         "response_suggestion": response_suggestion,
     }
-@router.post("/{email_id}/feedback")
+@router.post("/{email_id:int}/feedback")
 def add_feedback_for_email(
     email_id: int,
     corrected_category: str,
@@ -279,7 +279,7 @@ def add_feedback_for_email(
     }
 
 
-@router.get("/{email_id}/feedback")
+@router.get("/{email_id:int}/feedback")
 def get_email_feedbacks(email_id: int, db: Session = Depends(get_db)):
     email_record = get_email_by_id_from_db(db, email_id)
 
@@ -346,7 +346,7 @@ def get_pending_review_email_list(db: Session = Depends(get_db)):
     }
 
 
-@router.post("/{email_id}/approve-routing")
+@router.post("/{email_id:int}/approve-routing")
 def approve_routing(
     email_id: int,
     request: ApproveRoutingRequest,
@@ -363,9 +363,9 @@ def approve_routing(
     if not result:
         raise HTTPException(status_code=404, detail="Email not found")
 
-    return 
+    return result
 
-@router.post("/{email_id}/correct-routing")
+@router.post("/{email_id:int}/correct-routing")
 def correct_routing(
     email_id: int,
     request: CorrectRoutingRequest,
@@ -407,10 +407,10 @@ def manual_email_import(
     return {
         "message": "Email was imported and processed successfully.",
         "imported_email": created_email,
-        "processeing_result": processed_email,
+        "processing_result": processed_email,
     }
 
-@router.post("/{email_id}/process")
+@router.post("/{email_id:int}/process")
 def process_email(
     email_id: int,
     db: Session = Depends(get_db),
@@ -438,7 +438,7 @@ def get_system_log_list(
     }
 
 
-@router.get("/{email_id}/logs")
+@router.get("/{email_id:int}/logs")
 def get_email_system_logs(
     email_id: int,
     db: Session = Depends(get_db),
@@ -456,7 +456,7 @@ def get_operational_dashboard(
 ):
     return get_operational_dashboard_summary(db)
 
-@router.get("/{email_id}")
+@router.get("/{email_id:int}")
 def get_email_by_id(email_id: int, db: Session = Depends(get_db)):
     email_record = get_email_by_id_from_db(db, email_id)
 
@@ -466,7 +466,7 @@ def get_email_by_id(email_id: int, db: Session = Depends(get_db)):
     return email_to_dict(email_record)
 
     
-@router.get("/{email_id}/preprocess")
+@router.get("/{email_id:int}/preprocess")
 def preprocess_email_by_id(email_id: int, db: Session = Depends(get_db)):
     email_record = get_email_by_id_from_db(db, email_id)
 
@@ -483,7 +483,7 @@ def preprocess_email_by_id(email_id: int, db: Session = Depends(get_db)):
 
  
 
-@router.post("/{email_id}/classify")
+@router.post("/{email_id:int}/classify")
 def classify_email_by_id(email_id: int, db: Session = Depends(get_db)):
     email_record = get_email_by_id_from_db(db, email_id)
 
@@ -577,7 +577,7 @@ def classify_errors(db: Session = Depends(get_db)):
         "error_count": len(errors),
         "errors": errors,
     }
-@router.get("/{email_id}/analysis")
+@router.get("/{email_id:int}/analysis")
 def analyze_email_by_id(email_id: int, db: Session = Depends(get_db)):
     email_record = get_email_by_id_from_db(db, email_id)
 

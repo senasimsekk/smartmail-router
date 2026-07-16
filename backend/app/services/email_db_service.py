@@ -21,7 +21,7 @@ def email_to_dict(email: Email) -> dict:
         "approved_by": email.approved_by,
         "approved_at": email.approved_at.isoformat() if email.approved_at else None,
         "routing_note": email.routing_note,
-        "created_at": email.created_at,
+        "created_at": email.created_at.isoformat() if email.created_at else None,
     }
 
 

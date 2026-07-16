@@ -70,7 +70,7 @@ def generate_summary(email: dict, classification: dict) -> str:
             f"Mailin {department} tarafından yanıtlanması öneriliyor."
         )
 
-    if category == "Fatura/Ödeme":
+    if category in ["Fatura / Ödeme", "Fatura/Ödeme"]:
         return (
             "Gönderen, ödeme, fatura veya mali işlemle ilgili bir talep iletiyor. "
             f"Mailin {department} tarafından incelenmesi öneriliyor."
@@ -186,6 +186,7 @@ def detect_response_requirement(classification: dict) -> dict:
         "Şikayet",
         "İhbar",
         "Bilgi Edinme",
+        "Fatura / Ödeme",
         "Fatura/Ödeme",
         "İnsan Kaynakları",
         "Hukuki Tebligat",
@@ -273,7 +274,7 @@ def create_routing_decision(classification: dict, risk_analysis: dict) -> dict:
         if primary_department != "Evrak Kayıt":
             secondary_departments.append("Evrak Kayıt")
 
-    if category == "Fatura/Ödeme":
+    if category in ["Fatura / Ödeme", "Fatura/Ödeme"]:
         secondary_departments.append("Mali İşler")
 
     if category == "Basın Talebi":

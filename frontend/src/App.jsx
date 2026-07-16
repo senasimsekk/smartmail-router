@@ -1,398 +1,764 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 
 const API_BASE_URL = "http://127.0.0.1:8000";
 
+const EMPTY_IMPORT_FORM = {
+  subject: "",
+  sender: "",
+  body: "",
+  source_mailbox: "webmaster@rekabet.gov.tr",
+  has_attachment: false,
+  attachment_names: "",
+};
+
+const CATEGORY_OPTIONS = [
+  "KVKK Başvurusu",
+  "Teknik Destek",
+  "Basın Talebi",
+  "Satın Alma",
+  "Hukuki Tebligat",
+  "Şikayet",
+  "İhbar",
+  "Bilgi Edinme",
+  "Fatura / Ödeme",
+  "İnsan Kaynakları",
+  "Evrak Kayıt",
+  "Genel Başvuru",
+];
+
+const DEPARTMENT_OPTIONS = [
+  "Hukuk Müşavirliği",
+  "Bilgi İşlem",
+  "Basın ve Halkla İlişkiler",
+  "Satın Alma",
+  "Evrak Kayıt",
+  "İlgili Uzman Daire",
+  "Strateji / Mali İşler",
+  "İnsan Kaynakları",
+];
+
+const PRIORITY_OPTIONS = ["Kritik", "Yüksek", "Normal", "Düşük"];
+
+function formatPercent(value) {
+  if (typeof value !== "number") {
+    return "-";
+  }
+
+  return `${Math.round(value * 100)}%`;
+}
+
+function getStatusLabel(status) {
+  return status || "New";
+}
+
 function App() {
   const [emails, setEmails] = useState([]);
-  const [selectedEmail, setSelectedEmail] = useState(null);
-
-  const [analysisData, setAnalysisData] = useState(null);
-  const [aiData, setAiData] = useState(null);
-  const [responseSuggestionData, setResponseSuggestionData] = useState(null);
-
-  const [loadingEmails, setLoadingEmails] = useState(true);
-  const [loadingDetails, setLoadingDetails] = useState(false);
-
+  const [selectedEmailId, setSelectedEmailId] = useState(null);
+  const [details, setDetails] = useState(null);
+  const [dashboard, setDashboard] = useState(null);
+  const [operationalDashboard, setOperationalDashboard] = useState(null);
+  const [pendingReview, setPendingReview] = useState([]);
+  const [logs, setLogs] = useState([]);
+  const [importForm, setImportForm] = useState(EMPTY_IMPORT_FORM);
+  const [correctionForm, setCorrectionForm] = useState({
+    corrected_category: "Genel Başvuru",
+    corrected_department: "Evrak Kayıt",
+    corrected_priority: "Normal",
+    feedback_note: "",
+  });
+  const [loading, setLoading] = useState(true);
+  const [detailsLoading, setDetailsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [detailError, setDetailError] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
+
+  const selectedEmail = useMemo(
+    () => emails.find((email) => email.id === selectedEmailId) || null,
+    [emails, selectedEmailId]
+  );
 
   useEffect(() => {
-    async function fetchEmails() {
-      try {
-        const response = await fetch(`${API_BASE_URL}/emails`);
-
-        if (!response.ok) {
-          throw new Error(`Backend error: ${response.status}`);
-        }
-
-        const data = await response.json();
-        setEmails(data.emails || []);
-      } catch (error) {
-        console.error("Emails could not be fetched:", error);
-        setErrorMessage(error.message);
-      } finally {
-        setLoadingEmails(false);
-      }
-    }
-
-    fetchEmails();
+    refreshWorkspace();
   }, []);
 
-  async function handleSelectEmail(email) {
-    setSelectedEmail(email);
-    setAnalysisData(null);
-    setAiData(null);
-    setResponseSuggestionData(null);
-    setDetailError("");
-    setLoadingDetails(true);
+  useEffect(() => {
+    if (selectedEmailId) {
+      fetchEmailDetails(selectedEmailId);
+    }
+  }, [selectedEmailId]);
+
+  async function request(path, options = {}) {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+      ...options,
+    });
+
+    if (!response.ok) {
+      throw new Error(`${path} returned ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  async function refreshWorkspace() {
+    setErrorMessage("");
 
     try {
-      const [analysisResponse, aiResponse, responseSuggestionResponse] =
+      const [emailData, dashboardData, operationalData, pendingData] =
         await Promise.all([
-          fetch(`${API_BASE_URL}/emails/${email.id}/analysis`),
-          fetch(`${API_BASE_URL}/emails/${email.id}/ai-analysis`),
-          fetch(`${API_BASE_URL}/emails/${email.id}/response-suggestion`),
+          request("/emails"),
+          request("/emails/dashboard/summary"),
+          request("/emails/dashboard/operational"),
+          request("/emails/review/pending"),
         ]);
 
-      if (!analysisResponse.ok) {
-        throw new Error(`Analysis error: ${analysisResponse.status}`);
+      setEmails(emailData.emails || []);
+      setDashboard(dashboardData);
+      setOperationalDashboard(operationalData);
+      setPendingReview(pendingData.pending_emails || []);
+
+      if (!selectedEmailId && emailData.emails?.length) {
+        setSelectedEmailId(emailData.emails[0].id);
       }
-
-      if (!aiResponse.ok) {
-        throw new Error(`AI analysis error: ${aiResponse.status}`);
-      }
-
-      if (!responseSuggestionResponse.ok) {
-        throw new Error(
-          `Response suggestion error: ${responseSuggestionResponse.status}`
-        );
-      }
-
-      const analysisJson = await analysisResponse.json();
-      const aiJson = await aiResponse.json();
-      const responseSuggestionJson = await responseSuggestionResponse.json();
-
-      console.log("Analysis:", analysisJson);
-      console.log("AI:", aiJson);
-      console.log("Response Suggestion:", responseSuggestionJson);
-
-      setAnalysisData(analysisJson);
-      setAiData(aiJson);
-      setResponseSuggestionData(responseSuggestionJson);
     } catch (error) {
-      console.error("Details could not be fetched:", error);
-      setDetailError(error.message);
+      setErrorMessage(error.message);
     } finally {
-      setLoadingDetails(false);
+      setLoading(false);
     }
   }
 
-  const classification =
-    analysisData?.classification ||
-    analysisData?.classification_result ||
-    analysisData?.classification_data ||
-    {};
+  async function fetchEmailDetails(emailId) {
+    setDetailsLoading(true);
+    setActionMessage("");
 
-  const analysis =
-    analysisData?.analysis ||
-    analysisData?.email_analysis ||
-    analysisData ||
-    {};
+    try {
+      const [analysis, aiAnalysis, responseSuggestion, logData] =
+        await Promise.all([
+          request(`/emails/${emailId}/analysis`),
+          request(`/emails/${emailId}/ai-analysis`),
+          request(`/emails/${emailId}/response-suggestion`),
+          request(`/emails/${emailId}/logs`),
+        ]);
 
-  const aiAnalysis =
-    aiData?.ai_analysis ||
-    aiData?.analysis ||
-    aiData ||
-    {};
+      setDetails({
+        analysis,
+        aiAnalysis,
+        responseSuggestion,
+      });
+      setLogs(logData.logs || []);
+    } catch (error) {
+      setErrorMessage(error.message);
+    } finally {
+      setDetailsLoading(false);
+    }
+  }
 
-  const ruleClassification =
-    aiAnalysis?.rule_classification ||
-    aiAnalysis?.rule_result ||
-    {};
+  async function handleProcessEmail() {
+    if (!selectedEmail) {
+      return;
+    }
 
-  const mockAiResult =
-    aiAnalysis?.mock_ai_result ||
-    aiAnalysis?.ai_result ||
-    aiAnalysis?.ai_classification ||
-    {};
+    await runEmailAction(
+      `/emails/${selectedEmail.id}/process`,
+      { method: "POST" },
+      "Mail işlendi ve sınıflandırma kaydedildi."
+    );
+  }
 
-  const finalAiDecision =
-    aiAnalysis?.final_recommendation ||
-    aiAnalysis?.final_decision ||
-    aiAnalysis?.final_result ||
-    {};
+  async function handleApproveRouting() {
+    if (!selectedEmail) {
+      return;
+    }
 
+    await runEmailAction(
+      `/emails/${selectedEmail.id}/approve-routing`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          approved_by: "operator",
+          approved_department:
+            details?.analysis?.classification?.department || undefined,
+          routing_note: "Operatör panelinden onaylandı.",
+        }),
+      },
+      "Yönlendirme operatör tarafından onaylandı."
+    );
+  }
+
+  async function handleRouteEmail() {
+    if (!selectedEmail) {
+      return;
+    }
+
+    await runEmailAction(
+      `/emails/${selectedEmail.id}/route`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          routed_by: "operator",
+          target_department:
+            details?.analysis?.classification?.department || undefined,
+          routing_note: "Panel üzerinden ilgili birim havuzuna aktarıldı.",
+        }),
+      },
+      "Mail ilgili birim havuzuna yönlendirildi."
+    );
+  }
+
+  async function handleCorrectRouting(event) {
+    event.preventDefault();
+
+    if (!selectedEmail) {
+      return;
+    }
+
+    await runEmailAction(
+      `/emails/${selectedEmail.id}/correct-routing`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...correctionForm,
+          corrected_by: "operator",
+        }),
+      },
+      "Düzeltme kaydedildi ve geri bildirim eğitim verisine eklendi."
+    );
+  }
+
+  async function runEmailAction(path, options, successMessage) {
+    setActionMessage("");
+    setErrorMessage("");
+
+    try {
+      await request(path, options);
+      setActionMessage(successMessage);
+      await refreshWorkspace();
+
+      if (selectedEmailId) {
+        await fetchEmailDetails(selectedEmailId);
+      }
+    } catch (error) {
+      setErrorMessage(error.message);
+    }
+  }
+
+  async function handleImportSubmit(event) {
+    event.preventDefault();
+    setActionMessage("");
+    setErrorMessage("");
+
+    const attachmentNames = importForm.attachment_names
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean);
+
+    try {
+      const created = await request("/emails/ingestion/manual-import", {
+        method: "POST",
+        body: JSON.stringify({
+          ...importForm,
+          has_attachment: attachmentNames.length > 0 || importForm.has_attachment,
+          attachment_names: attachmentNames,
+        }),
+      });
+
+      setImportForm(EMPTY_IMPORT_FORM);
+      setSelectedEmailId(created.imported_email.id);
+      setActionMessage("Sentetik mail içe aktarıldı ve işlendi.");
+      await refreshWorkspace();
+    } catch (error) {
+      setErrorMessage(error.message);
+    }
+  }
+
+  const classification = details?.analysis?.classification || {};
+  const analysis = details?.analysis?.analysis || {};
+  const extracted = details?.analysis?.extracted_information || {};
+  const attachmentAnalysis = analysis?.attachment_analysis || {};
   const responseSuggestion =
-    responseSuggestionData?.response_suggestion ||
-    responseSuggestionData?.suggestion ||
-    responseSuggestionData ||
-    {};
+    details?.responseSuggestion?.response_suggestion || {};
+  const aiAnalysis = details?.aiAnalysis?.ai_analysis || {};
+  const ruleBasedClassification = aiAnalysis.rule_based_classification || {};
+  const mockAiClassification = aiAnalysis.mock_ai_classification || {};
 
-  const attachmentNames = Array.isArray(selectedEmail?.attachment_names)
-    ? selectedEmail.attachment_names
-    : [];
-
-  if (loadingEmails) {
-    return <p className="loading-text">Loading emails...</p>;
+  if (loading) {
+    return <div className="page-loading">SmartMail Router yükleniyor...</div>;
   }
 
   return (
-    <div className="app-container">
-      <aside className="email-list">
-        <h1>SmartMail Router</h1>
+    <div className="app-shell">
+      <header className="topbar">
+        <div>
+          <p className="eyebrow">Kurumsal E-posta Sınıflandırma</p>
+          <h1>SmartMail Router</h1>
+        </div>
+        <button className="secondary-button" onClick={refreshWorkspace}>
+          Yenile
+        </button>
+      </header>
 
-        {errorMessage && (
-          <p className="error-text">Backend connection error: {errorMessage}</p>
-        )}
+      {errorMessage && <div className="alert danger">{errorMessage}</div>}
+      {actionMessage && <div className="alert success">{actionMessage}</div>}
 
-        <p className="email-count">{emails.length} emails found</p>
+      <section className="metrics-grid" aria-label="Dashboard metrikleri">
+        <Metric label="Toplam mail" value={dashboard?.total_emails ?? 0} />
+        <Metric
+          label="İnsan onayı"
+          value={dashboard?.human_review_count ?? 0}
+        />
+        <Metric
+          label="Kritik risk"
+          value={dashboard?.critical_risk_count ?? 0}
+        />
+        <Metric
+          label="Doğruluk"
+          value={formatPercent(dashboard?.accuracy)}
+        />
+        <Metric
+          label="Bekleyen"
+          value={operationalDashboard?.pending_review_count ?? 0}
+        />
+        <Metric
+          label="Yönlendirilen"
+          value={operationalDashboard?.routing_status_distribution?.Routed ?? 0}
+        />
+      </section>
 
-        {emails.map((email) => (
-          <button
-            key={email.id}
-            className={`email-card ${
-              selectedEmail?.id === email.id ? "active-email-card" : ""
-            }`}
-            onClick={() => handleSelectEmail(email)}
-          >
-            <h3>{email.subject}</h3>
-            <p>{email.sender}</p>
-            <span>{email.source_mailbox}</span>
-          </button>
-        ))}
-      </aside>
-
-      <main className="email-detail">
-        {!selectedEmail && (
-          <div className="empty-state">
-            <h2>Select an email</h2>
-            <p>Choose an email from the list to see its details.</p>
+      <main className="workspace-grid">
+        <aside className="queue-panel">
+          <div className="panel-heading">
+            <h2>Mail Kuyruğu</h2>
+            <span>{emails.length} kayıt</span>
           </div>
-        )}
 
-        {selectedEmail && (
-          <div className="detail-card">
-            <h2>{selectedEmail.subject}</h2>
+          <div className="queue-list">
+            {emails.map((email) => (
+              <button
+                key={email.id}
+                className={`queue-item ${
+                  selectedEmailId === email.id ? "selected" : ""
+                }`}
+                onClick={() => setSelectedEmailId(email.id)}
+              >
+                <span className="queue-subject">{email.subject}</span>
+                <span className="queue-meta">{email.sender}</span>
+                <span className="status-row">
+                  <span>{email.source_mailbox}</span>
+                  <strong>{getStatusLabel(email.routing_status)}</strong>
+                </span>
+              </button>
+            ))}
+          </div>
 
-            <div className="meta-row">
-              <strong>From:</strong>
-              <span>{selectedEmail.sender}</span>
+          <div className="compact-section">
+            <h3>Onay Bekleyenler</h3>
+            {pendingReview.length === 0 ? (
+              <p className="muted">Bekleyen kritik kayıt yok.</p>
+            ) : (
+              pendingReview.slice(0, 5).map((item) => (
+                <button
+                  key={item.email.id}
+                  className="mini-row"
+                  onClick={() => setSelectedEmailId(item.email.id)}
+                >
+                  <span>{item.email.subject}</span>
+                  <strong>{item.classification.priority}</strong>
+                </button>
+              ))
+            )}
+          </div>
+        </aside>
+
+        <section className="detail-panel">
+          {!selectedEmail && (
+            <div className="empty-state">
+              <h2>Kayıt bulunamadı</h2>
+              <p>Veritabanına sentetik mail ekleyerek başlayabilirsin.</p>
             </div>
+          )}
 
-            <div className="meta-row">
-              <strong>Source Mailbox:</strong>
-              <span>{selectedEmail.source_mailbox}</span>
-            </div>
-
-            <div className="meta-row">
-              <strong>Attachment:</strong>
-              <span>{selectedEmail.has_attachment ? "Yes" : "No"}</span>
-            </div>
-
-            {selectedEmail.has_attachment && (
-              <div className="meta-row">
-                <strong>Attachment Names:</strong>
-                <span>{attachmentNames.join(", ")}</span>
+          {selectedEmail && (
+            <>
+              <div className="detail-header">
+                <div>
+                  <p className="eyebrow">Seçili Mail</p>
+                  <h2>{selectedEmail.subject}</h2>
+                </div>
+                <div className="button-row">
+                  <button onClick={handleProcessEmail}>İşle</button>
+                  <button onClick={handleApproveRouting}>Onayla</button>
+                  <button onClick={handleRouteEmail}>Yönlendir</button>
+                </div>
               </div>
-            )}
 
-            <hr />
+              <div className="meta-grid">
+                <Meta label="Gönderen" value={selectedEmail.sender} />
+                <Meta label="Kaynak kutu" value={selectedEmail.source_mailbox} />
+                <Meta
+                  label="Durum"
+                  value={getStatusLabel(selectedEmail.routing_status)}
+                />
+                <Meta
+                  label="Ek"
+                  value={
+                    selectedEmail.has_attachment
+                      ? selectedEmail.attachment_names?.join(", ")
+                      : "Yok"
+                  }
+                />
+              </div>
 
-            <section>
-              <h3 className="section-title">Email Body</h3>
-              <p className="email-body">{selectedEmail.body}</p>
-            </section>
+              <div className="body-box">{selectedEmail.body}</div>
 
-            <hr />
+              {detailsLoading && (
+                <p className="muted">Analiz sonuçları yükleniyor...</p>
+              )}
 
-            {loadingDetails && (
-              <p className="small-loading">Smart details loading...</p>
-            )}
-
-            {detailError && (
-              <p className="error-text">
-                Details could not be loaded: {detailError}
-              </p>
-            )}
-
-            {!loadingDetails && analysisData && (
-              <section>
-                <h3 className="section-title">Smart Analysis</h3>
-
-                <div className="info-grid">
-                  <div className="info-card">
-                    <span>Category</span>
-                    <strong>{classification.category || "—"}</strong>
-                  </div>
-
-                  <div className="info-card">
-                    <span>Department</span>
-                    <strong>{classification.department || "—"}</strong>
-                  </div>
-
-                  <div className="info-card">
-                    <span>Priority</span>
-                    <strong>{classification.priority || "—"}</strong>
-                  </div>
-
-                  <div className="info-card">
-                    <span>Confidence</span>
-                    <strong>
-                      {classification.confidence_score !== undefined
-                        ? `${Math.round(classification.confidence_score * 100)}%`
-                        : "—"}
-                    </strong>
-                  </div>
-
-                  <div className="info-card">
-                    <span>Risk Level</span>
-                    <strong>{analysis.risk_level || "—"}</strong>
-                  </div>
-
-                  <div className="info-card">
-                    <span>Operation Type</span>
-                    <strong>{analysis.operation_type || "—"}</strong>
-                  </div>
-
-                  <div className="info-card">
-                    <span>Needs Response</span>
-                    <strong>{analysis.needs_response ? "Yes" : "No"}</strong>
-                  </div>
-
-                  <div className="info-card">
-                    <span>Human Review</span>
-                    <strong>
-                      {classification.requires_human_review
-                        ? "Required"
-                        : "Not required"}
-                    </strong>
-                  </div>
-                </div>
-
-                <div className="summary-box">
-                  <h4>Summary</h4>
-                  <p>{analysis.summary || "No summary available."}</p>
-                </div>
-
-                <div className="summary-box">
-                  <h4>Suggested Action</h4>
-                  <p>
-                    {analysis.suggested_action ||
-                      "No suggested action available."}
-                  </p>
-                </div>
-
-                {Array.isArray(analysis.risk_reasons) &&
-                  analysis.risk_reasons.length > 0 && (
-                    <div className="summary-box">
-                      <h4>Risk Reasons</h4>
-                      <ul>
-                        {analysis.risk_reasons.map((reason, index) => (
-                          <li key={index}>{reason}</li>
-                        ))}
-                      </ul>
+              {!detailsLoading && details && (
+                <>
+                  <section className="section-block">
+                    <div className="panel-heading">
+                      <h3>Sınıflandırma ve Risk</h3>
+                      <span>{formatPercent(classification.confidence_score)}</span>
                     </div>
-                  )}
-              </section>
-            )}
 
-            {!loadingDetails && aiData && (
-              <section>
-                <hr />
-                <h3 className="section-title">AI Analysis</h3>
+                    <div className="analysis-grid">
+                      <Meta label="Kategori" value={classification.category} />
+                      <Meta label="Birim" value={classification.department} />
+                      <Meta label="Öncelik" value={classification.priority} />
+                      <Meta
+                        label="İnsan onayı"
+                        value={
+                          classification.requires_human_review
+                            ? "Gerekli"
+                            : "Gerekli değil"
+                        }
+                      />
+                      <Meta label="Risk" value={analysis.risk_level} />
+                      <Meta label="İşlem türü" value={analysis.operation_type} />
+                    </div>
 
-                <div className="info-grid">
-                  <div className="info-card">
-                    <span>Rule Category</span>
-                    <strong>{ruleClassification.category || "—"}</strong>
-                  </div>
+                    <TextBlock title="Özet" text={analysis.summary} />
+                    <TextBlock
+                      title="Sistem açıklaması"
+                      text={classification.explanation}
+                    />
+                    <ListBlock
+                      title="Risk nedenleri"
+                      items={analysis.risk_reasons}
+                    />
+                  </section>
 
-                  <div className="info-card">
-                    <span>AI Category</span>
-                    <strong>{mockAiResult.category || "—"}</strong>
-                  </div>
+                  <section className="section-block">
+                    <h3>Bilgi Çıkarımı</h3>
+                    <div className="analysis-grid">
+                      <Meta label="Talep sahibi" value={extracted.sender} />
+                      <Meta
+                        label="Gizlilik"
+                        value={extracted.confidentiality_level}
+                      />
+                      <Meta
+                        label="Talep edilen işlem"
+                        value={extracted.requested_action}
+                      />
+                      <Meta
+                        label="Dosya no"
+                        value={extracted.file_numbers?.join(", ") || "-"}
+                      />
+                      <Meta
+                        label="Başvuru no"
+                        value={extracted.application_numbers?.join(", ") || "-"}
+                      />
+                      <Meta
+                        label="Mevzuat"
+                        value={extracted.related_legislation?.join(", ") || "-"}
+                      />
+                    </div>
+                  </section>
 
-                  <div className="info-card">
-                    <span>AI Confidence</span>
-                    <strong>
-                      {mockAiResult.confidence_score !== undefined
-                        ? `${Math.round(mockAiResult.confidence_score * 100)}%`
-                        : "—"}
-                    </strong>
-                  </div>
+                  <section className="section-block">
+                    <h3>Ek Dosya Analizi</h3>
+                    {!attachmentAnalysis.has_attachments ? (
+                      <p className="muted">Bu mailde ek dosya yok.</p>
+                    ) : (
+                      <>
+                        <div className="analysis-grid">
+                          <Meta
+                            label="Ek sayısı"
+                            value={attachmentAnalysis.attachment_count}
+                          />
+                          <Meta
+                            label="Genel risk"
+                            value={attachmentAnalysis.overall_risk_level}
+                          />
+                          <Meta
+                            label="Evrak kaydı"
+                            value={
+                              attachmentAnalysis.requires_record
+                                ? "Gerekli"
+                                : "Gerekli değil"
+                            }
+                          />
+                          <Meta
+                            label="İnsan onayı"
+                            value={
+                              attachmentAnalysis.requires_human_review
+                                ? "Gerekli"
+                                : "Gerekli değil"
+                            }
+                          />
+                        </div>
+                        {attachmentAnalysis.attachments?.map((attachment) => (
+                          <div className="attachment-row" key={attachment.filename}>
+                            <strong>{attachment.filename}</strong>
+                            <span>{attachment.file_type}</span>
+                            <span>{attachment.risk_level}</span>
+                            <p>{attachment.suggested_action}</p>
+                          </div>
+                        ))}
+                      </>
+                    )}
+                  </section>
 
-                  <div className="info-card">
-                    <span>Human Review</span>
-                    <strong>
-                      {finalAiDecision.human_review_required ||
-                      mockAiResult.requires_human_review
-                        ? "Required"
-                        : "Not required"}
-                    </strong>
-                  </div>
-                </div>
+                  <section className="section-block">
+                    <h3>Cevap Önerisi</h3>
+                    {responseSuggestion.warning && (
+                      <div className="alert warning">
+                        {responseSuggestion.warning}
+                      </div>
+                    )}
+                    <div className="response-box">
+                      {responseSuggestion.suggested_response ||
+                        "Cevap önerisi üretilemedi."}
+                    </div>
+                  </section>
 
-                <div className="summary-box">
-                  <h4>AI Explanation</h4>
-                  <p>
-                    {mockAiResult.explanation ||
-                      finalAiDecision.explanation ||
-                      "No AI explanation available."}
-                  </p>
-                </div>
+                  <section className="section-block">
+                    <h3>AI ve Kural Kararı</h3>
+                    <div className="analysis-grid">
+                      <Meta
+                        label="Kural kategorisi"
+                        value={ruleBasedClassification.category}
+                      />
+                      <Meta
+                        label="AI kategorisi"
+                        value={mockAiClassification.ai_category}
+                      />
+                      <Meta
+                        label="AI güven"
+                        value={formatPercent(
+                          mockAiClassification.ai_confidence_score
+                        )}
+                      />
+                      <Meta
+                        label="Karar kaynağı"
+                        value={
+                          aiAnalysis.final_recommendation
+                            ?.final_decision_source
+                        }
+                      />
+                    </div>
+                  </section>
 
-                <div className="summary-box">
-                  <h4>Final Decision</h4>
-                  <p>
-                    {finalAiDecision.decision_source ||
-                      finalAiDecision.final_decision_source ||
-                      finalAiDecision.recommendation ||
-                      "No final AI decision available."}
-                  </p>
-                </div>
-              </section>
-            )}
+                  <section className="section-block">
+                    <h3>Yanlış Yönlendirme Düzelt</h3>
+                    <form className="correction-form" onSubmit={handleCorrectRouting}>
+                      <select
+                        value={correctionForm.corrected_category}
+                        onChange={(event) =>
+                          setCorrectionForm({
+                            ...correctionForm,
+                            corrected_category: event.target.value,
+                          })
+                        }
+                      >
+                        {CATEGORY_OPTIONS.map((category) => (
+                          <option key={category}>{category}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={correctionForm.corrected_department}
+                        onChange={(event) =>
+                          setCorrectionForm({
+                            ...correctionForm,
+                            corrected_department: event.target.value,
+                          })
+                        }
+                      >
+                        {DEPARTMENT_OPTIONS.map((department) => (
+                          <option key={department}>{department}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={correctionForm.corrected_priority}
+                        onChange={(event) =>
+                          setCorrectionForm({
+                            ...correctionForm,
+                            corrected_priority: event.target.value,
+                          })
+                        }
+                      >
+                        {PRIORITY_OPTIONS.map((priority) => (
+                          <option key={priority}>{priority}</option>
+                        ))}
+                      </select>
+                      <input
+                        value={correctionForm.feedback_note}
+                        onChange={(event) =>
+                          setCorrectionForm({
+                            ...correctionForm,
+                            feedback_note: event.target.value,
+                          })
+                        }
+                        placeholder="Geri bildirim notu"
+                      />
+                      <button type="submit">Düzeltmeyi Kaydet</button>
+                    </form>
+                  </section>
 
-            {!loadingDetails && responseSuggestionData && (
-              <section>
-                <hr />
-                <h3 className="section-title">Response Suggestion</h3>
+                  <section className="section-block">
+                    <h3>Audit Log</h3>
+                    {logs.length === 0 ? (
+                      <p className="muted">Bu kayıt için log yok.</p>
+                    ) : (
+                      logs.slice(0, 6).map((log) => (
+                        <div className="log-row" key={log.id}>
+                          <strong>{log.action_type}</strong>
+                          <span>{log.actor}</span>
+                          <p>{log.action_detail}</p>
+                        </div>
+                      ))
+                    )}
+                  </section>
+                </>
+              )}
+            </>
+          )}
+        </section>
 
-                <div className="info-grid">
-                  <div className="info-card">
-                    <span>Template Type</span>
-                    <strong>{responseSuggestion.template_type || "—"}</strong>
-                  </div>
+        <aside className="import-panel">
+          <h2>Manuel Sentetik Mail</h2>
+          <form onSubmit={handleImportSubmit}>
+            <label>
+              Konu
+              <input
+                required
+                value={importForm.subject}
+                onChange={(event) =>
+                  setImportForm({ ...importForm, subject: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              Gönderen
+              <input
+                required
+                type="email"
+                value={importForm.sender}
+                onChange={(event) =>
+                  setImportForm({ ...importForm, sender: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              Kaynak posta kutusu
+              <input
+                value={importForm.source_mailbox}
+                onChange={(event) =>
+                  setImportForm({
+                    ...importForm,
+                    source_mailbox: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <label>
+              Mail gövdesi
+              <textarea
+                required
+                rows={7}
+                value={importForm.body}
+                onChange={(event) =>
+                  setImportForm({ ...importForm, body: event.target.value })
+                }
+              />
+            </label>
+            <label>
+              Ek dosyalar
+              <input
+                placeholder="tebligat.pdf, kimlik.png"
+                value={importForm.attachment_names}
+                onChange={(event) =>
+                  setImportForm({
+                    ...importForm,
+                    attachment_names: event.target.value,
+                  })
+                }
+              />
+            </label>
+            <button type="submit">Maili İçe Aktar</button>
+          </form>
 
-                  <div className="info-card">
-                    <span>Human Approval</span>
-                    <strong>
-                      {responseSuggestion.needs_human_approval
-                        ? "Required"
-                        : "Required"}
-                    </strong>
-                  </div>
-                </div>
-
-                {responseSuggestion.warning && (
-                  <div className="warning-box">
-                    {responseSuggestion.warning}
-                  </div>
-                )}
-
-                <div className="response-box">
-                  <h4>Suggested Response Draft</h4>
-                  <p>
-                    {responseSuggestion.suggested_response ||
-                      "No response suggestion available."}
-                  </p>
-                </div>
-              </section>
-            )}
+          <div className="compact-section">
+            <h3>Durum Dağılımı</h3>
+            {Object.entries(
+              operationalDashboard?.routing_status_distribution || {}
+            ).map(([status, count]) => (
+              <div className="mini-row static" key={status}>
+                <span>{status}</span>
+                <strong>{count}</strong>
+              </div>
+            ))}
           </div>
-        )}
+        </aside>
       </main>
+    </div>
+  );
+}
+
+function Metric({ label, value }) {
+  return (
+    <div className="metric-card">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function Meta({ label, value }) {
+  return (
+    <div className="meta-item">
+      <span>{label}</span>
+      <strong>{value || "-"}</strong>
+    </div>
+  );
+}
+
+function TextBlock({ title, text }) {
+  return (
+    <div className="text-block">
+      <h4>{title}</h4>
+      <p>{text || "-"}</p>
+    </div>
+  );
+}
+
+function ListBlock({ title, items = [] }) {
+  if (!items.length) {
+    return null;
+  }
+
+  return (
+    <div className="text-block">
+      <h4>{title}</h4>
+      <ul>
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
     </div>
   );
 }
