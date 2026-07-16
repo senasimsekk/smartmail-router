@@ -4,6 +4,9 @@ from sqlalchemy.orm import Session
 
 from app.models.email import Email
 from app.models.system_log import SystemLog
+from app.services.classification_service import classify_email
+from app.services.email_db_service import email_to_dict
+from app.services.sla_service import calculate_sla
 from app.services.system_log_service import system_log_to_dict
 
 
@@ -45,6 +48,17 @@ def get_operational_dashboard_summary(db: Session) -> dict:
         1 for email in emails if email.has_attachment
     )
 
+    sla_status_distribution = Counter()
+
+    for email_record in emails:
+        email = email_to_dict(email_record)
+        classification = classify_email(email)
+        sla = calculate_sla(email, classification)
+        sla_status_distribution[sla["status_label"]] += 1
+
+    sla_due_soon_count = sla_status_distribution.get("Yaklaşıyor", 0)
+    sla_overdue_count = sla_status_distribution.get("Gecikti", 0)
+
     imported_email_count = system_log_action_distribution.get(
         "EMAIL_IMPORTED",
         0,
@@ -72,7 +86,10 @@ def get_operational_dashboard_summary(db: Session) -> dict:
         "classified_count": classified_count,
         "human_review_count": human_review_count,
         "attachment_email_count": attachment_email_count,
+        "sla_due_soon_count": sla_due_soon_count,
+        "sla_overdue_count": sla_overdue_count,
         "routing_status_distribution": dict(routing_status_distribution),
+        "sla_status_distribution": dict(sla_status_distribution),
         "system_log_action_distribution": dict(system_log_action_distribution),
         "latest_logs": [system_log_to_dict(log) for log in latest_logs],
     }

@@ -192,6 +192,7 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
     source_mailbox_counter = Counter()
     operation_type_counter = Counter()
     risk_level_counter = Counter()
+    sla_status_counter = Counter()
 
     total_emails = len(emails)
     correct_predictions = 0
@@ -199,11 +200,14 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
     critical_risk_count = 0
     attachment_email_count = 0
     needs_response_count = 0
+    sla_due_soon_count = 0
+    sla_overdue_count = 0
 
     for email in emails:
         classification = classify_email(email)
         evaluation_result = evaluate_classification(email, classification)
         analysis = analyze_email(email, classification)
+        sla = analysis["sla"]
 
         category_counter[classification["category"]] += 1
         department_counter[classification["department"]] += 1
@@ -211,6 +215,7 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
         source_mailbox_counter[email.get("source_mailbox") or "unknown"] += 1
         operation_type_counter[analysis["operation_type"]] += 1
         risk_level_counter[analysis["risk_level"]] += 1
+        sla_status_counter[sla["status_label"]] += 1
 
         if evaluation_result["all_correct"]:
             correct_predictions += 1
@@ -227,6 +232,12 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
         if analysis["needs_response"]:
             needs_response_count += 1
 
+        if sla["status"] == "Due soon":
+            sla_due_soon_count += 1
+
+        if sla["status"] == "Overdue":
+            sla_overdue_count += 1
+
     accuracy = correct_predictions / total_emails if total_emails > 0 else 0
 
     return {
@@ -238,12 +249,15 @@ def get_dashboard_summary(db: Session = Depends(get_db)):
         "critical_risk_count": critical_risk_count,
         "attachment_email_count": attachment_email_count,
         "needs_response_count": needs_response_count,
+        "sla_due_soon_count": sla_due_soon_count,
+        "sla_overdue_count": sla_overdue_count,
         "category_distribution": dict(category_counter),
         "department_distribution": dict(department_counter),
         "priority_distribution": dict(priority_counter),
         "source_mailbox_distribution": dict(source_mailbox_counter),
         "operation_type_distribution": dict(operation_type_counter),
         "risk_level_distribution": dict(risk_level_counter),
+        "sla_status_distribution": dict(sla_status_counter),
     }
 @router.get("/{email_id:int}/ai-analysis")
 def get_email_ai_analysis(email_id: int, db: Session = Depends(get_db)):

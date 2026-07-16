@@ -110,6 +110,32 @@ function formatPercent(value) {
   return `${Math.round(value * 100)}%`;
 }
 
+function formatDate(value) {
+  if (!value) {
+    return "-";
+  }
+
+  return new Intl.DateTimeFormat("tr-TR", {
+    dateStyle: "medium",
+  }).format(new Date(value));
+}
+
+function formatRemainingDays(value) {
+  if (typeof value !== "number") {
+    return "-";
+  }
+
+  if (value < 0) {
+    return `${Math.abs(value)} gün gecikti`;
+  }
+
+  if (value === 0) {
+    return "Bugün";
+  }
+
+  return `${value} gün`;
+}
+
 function getStatusLabel(status) {
   return status || "New";
 }
@@ -632,6 +658,7 @@ function App() {
 
   const classification = details?.analysis?.classification || {};
   const analysis = details?.analysis?.analysis || {};
+  const sla = analysis?.sla || {};
   const extracted = details?.analysis?.extracted_information || {};
   const attachmentAnalysis = analysis?.attachment_analysis || {};
   const attachmentTexts = selectedEmail?.attachment_texts || [];
@@ -698,6 +725,14 @@ function App() {
         <Metric
           label="Bekleyen"
           value={operationalDashboard?.pending_review_count ?? 0}
+        />
+        <Metric
+          label="SLA yaklaşan"
+          value={dashboard?.sla_due_soon_count ?? 0}
+        />
+        <Metric
+          label="SLA geciken"
+          value={dashboard?.sla_overdue_count ?? 0}
         />
         <Metric
           label="Yönlendirilen"
@@ -843,9 +878,23 @@ function App() {
                       />
                       <Meta label="Risk" value={analysis.risk_level} />
                       <Meta label="İşlem türü" value={analysis.operation_type} />
+                      <Meta label="SLA" value={sla.status_label} />
+                      <Meta label="Son tarih" value={formatDate(sla.due_at)} />
+                      <Meta
+                        label="Kalan süre"
+                        value={formatRemainingDays(sla.remaining_days)}
+                      />
                     </div>
 
                     <TextBlock title="Özet" text={analysis.summary} />
+                    <TextBlock
+                      title="SLA politikası"
+                      text={
+                        sla.policy_name
+                          ? `${sla.policy_name}: ${sla.sla_days} gün içinde işlem hedeflenir.`
+                          : "-"
+                      }
+                    />
                     <TextBlock
                       title="Sistem açıklaması"
                       text={classification.explanation}
@@ -1183,6 +1232,18 @@ function App() {
             <h3>Durum Dağılımı</h3>
             {Object.entries(
               operationalDashboard?.routing_status_distribution || {}
+            ).map(([status, count]) => (
+              <div className="mini-row static" key={status}>
+                <span>{status}</span>
+                <strong>{count}</strong>
+              </div>
+            ))}
+          </div>
+
+          <div className="compact-section">
+            <h3>SLA Dağılımı</h3>
+            {Object.entries(
+              operationalDashboard?.sla_status_distribution || {}
             ).map(([status, count]) => (
               <div className="mini-row static" key={status}>
                 <span>{status}</span>
