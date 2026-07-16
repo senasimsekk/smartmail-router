@@ -343,6 +343,10 @@ function App() {
     training_example_count: 0,
     training_examples: [],
   });
+  const [modelStatus, setModelStatus] = useState({
+    is_trained: false,
+    metadata: null,
+  });
   const [logs, setLogs] = useState([]);
   const [importForm, setImportForm] = useState(EMPTY_IMPORT_FORM);
   const [selectedAttachmentFile, setSelectedAttachmentFile] = useState(null);
@@ -405,11 +409,13 @@ function App() {
       ...options,
     });
 
+    const data = await response.json();
+
     if (!response.ok) {
-      throw new Error(`${path} returned ${response.status}`);
+      throw new Error(data.detail || `${path} returned ${response.status}`);
     }
 
-    return response.json();
+    return data;
   }, []);
 
   const refreshWorkspace = useCallback(async function refreshWorkspace() {
@@ -443,6 +449,17 @@ function App() {
       setSelectedEmailId((currentEmailId) =>
         currentEmailId || emailData.emails?.[0]?.id || null
       );
+
+      try {
+        const modelData = await request("/emails/model/status");
+        setModelStatus(modelData);
+      } catch (error) {
+        setModelStatus({
+          is_trained: false,
+          metadata: null,
+          error: error.message,
+        });
+      }
     } catch (error) {
       setErrorMessage(error.message);
     } finally {
@@ -463,10 +480,19 @@ function App() {
           request(`/emails/${emailId}/logs`),
         ]);
 
+      let modelPrediction = null;
+
+      try {
+        modelPrediction = await request(`/emails/${emailId}/model-prediction`);
+      } catch {
+        modelPrediction = null;
+      }
+
       setDetails({
         analysis,
         aiAnalysis,
         responseSuggestion,
+        modelPrediction,
       });
       setLogs(logData.logs || []);
     } catch (error) {
@@ -741,6 +767,40 @@ function App() {
     setActionMessage("Eğitim verisi JSONL olarak hazırlandı.");
   }
 
+  async function handleTrainModel() {
+    if (!can("view_training_data")) {
+      setActionMessage("Bu rol model eğitimi başlatamaz.");
+      return;
+    }
+
+    setActionMessage("");
+    setErrorMessage("");
+
+    try {
+      const result = await request("/emails/model/train", {
+        method: "POST",
+        body: JSON.stringify({
+          actor_role: activeRole,
+        }),
+      });
+
+      setModelStatus({
+        is_trained: true,
+        model_path: result.model_path,
+        metadata: result.metadata,
+      });
+      setActionMessage(
+        `Model ${result.metadata.training_example_count} örnekle eğitildi.`
+      );
+
+      if (selectedEmailId) {
+        await fetchEmailDetails(selectedEmailId);
+      }
+    } catch (error) {
+      setErrorMessage(error.message);
+    }
+  }
+
   const classification = details?.analysis?.classification || {};
   const analysis = details?.analysis?.analysis || {};
   const sla = analysis?.sla || {};
@@ -750,6 +810,8 @@ function App() {
   const responseSuggestion =
     details?.responseSuggestion?.response_suggestion || {};
   const aiAnalysis = details?.aiAnalysis?.ai_analysis || {};
+  const trainedModelPrediction =
+    details?.modelPrediction?.model_prediction?.prediction || {};
   const ruleBasedClassification = aiAnalysis.rule_based_classification || {};
   const mockAiClassification = aiAnalysis.mock_ai_classification || {};
   const workflowGraph = buildWorkflowGraph(
@@ -1188,6 +1250,36 @@ function App() {
                   </section>
 
                   <section className="section-block">
+                    <h3>Eğitilebilir Model</h3>
+                    {!details.modelPrediction ? (
+                      <p className="muted">
+                        Model henüz eğitilmedi veya tahmin üretmeye hazır değil.
+                      </p>
+                    ) : (
+                      <div className="analysis-grid">
+                        <Meta
+                          label="Model kategorisi"
+                          value={trainedModelPrediction.category}
+                        />
+                        <Meta
+                          label="Model birimi"
+                          value={trainedModelPrediction.department}
+                        />
+                        <Meta
+                          label="Model önceliği"
+                          value={trainedModelPrediction.priority}
+                        />
+                        <Meta
+                          label="Model güveni"
+                          value={formatPercent(
+                            trainedModelPrediction.confidence_score
+                          )}
+                        />
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="section-block">
                     <div className="panel-heading">
                       <h3>İş Akışı</h3>
                       <span>{getStatusLabel(selectedEmail.routing_status)}</span>
@@ -1399,14 +1491,24 @@ function App() {
           <div className="compact-section">
             <div className="panel-heading compact-heading">
               <h3>Eğitim Verisi</h3>
-              <button
-                className="secondary-button small-button"
-                disabled={!can("view_training_data")}
-                type="button"
-                onClick={handleDownloadTrainingJsonl}
-              >
-                JSONL İndir
-              </button>
+              <div className="button-row">
+                <button
+                  className="secondary-button small-button"
+                  disabled={!can("view_training_data")}
+                  type="button"
+                  onClick={handleTrainModel}
+                >
+                  Modeli Eğit
+                </button>
+                <button
+                  className="secondary-button small-button"
+                  disabled={!can("view_training_data")}
+                  type="button"
+                  onClick={handleDownloadTrainingJsonl}
+                >
+                  JSONL İndir
+                </button>
+              </div>
             </div>
 
             <div className="training-summary">
@@ -1415,7 +1517,19 @@ function App() {
                 label="Training örneği"
                 value={trainingData.training_example_count ?? 0}
               />
+              <Meta
+                label="Model"
+                value={modelStatus.is_trained ? "Eğitildi" : "Eğitilmedi"}
+              />
+              <Meta
+                label="Model örneği"
+                value={modelStatus.metadata?.training_example_count ?? 0}
+              />
             </div>
+
+            {modelStatus.error && (
+              <p className="muted">{modelStatus.error}</p>
+            )}
 
             {feedbackData.feedbacks.length === 0 ? (
               <p className="muted">Henüz feedback kaydı yok.</p>

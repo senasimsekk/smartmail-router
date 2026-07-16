@@ -23,6 +23,13 @@ from app.services.authorization_service import (
     role_has_permission,
 )
 from app.services.sla_service import calculate_sla
+from app.services.trainable_model_service import (
+    ModelDependencyError,
+    ModelNotTrainedError,
+    get_model_status,
+    predict_email_with_trained_model,
+    train_email_classifier,
+)
 from app.services.email_db_service import (
     email_to_dict,
     get_all_emails_from_db,
@@ -50,6 +57,7 @@ from app.services.feedback_service import (
     get_feedbacks_by_email_id,
 )
 from app.services.system_log_service import (
+    create_system_log,
     get_all_system_logs,
     get_system_logs_by_email_id,
 )
@@ -87,6 +95,10 @@ class RouteEmailRequest(BaseModel):
     actor_role: str = "operator"
     target_department: Optional[str] = None
     routing_note: Optional[str] = None
+
+
+class TrainModelRequest(BaseModel):
+    actor_role: str = "operator"
 
 
 def require_permission(actor_role: str, permission: str):
@@ -415,6 +427,39 @@ def get_feedback_training_data(db: Session = Depends(get_db)):
         "training_example_count": len(training_examples),
         "training_examples": training_examples,
     }
+
+
+@router.get("/model/status")
+def get_trainable_model_status():
+    try:
+        return get_model_status()
+    except ModelDependencyError as error:
+        raise HTTPException(status_code=500, detail=str(error)) from error
+
+
+@router.post("/model/train")
+def train_model(
+    request: TrainModelRequest,
+    db: Session = Depends(get_db),
+):
+    require_permission(request.actor_role, "view_training_data")
+
+    try:
+        result = train_email_classifier(db)
+    except ModelDependencyError as error:
+        raise HTTPException(status_code=500, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+    create_system_log(
+        db=db,
+        action_type="MODEL_TRAINED",
+        action_detail="Trainable email classifier was trained.",
+        actor=request.actor_role,
+        extra_data=result["metadata"],
+    )
+
+    return result
 @router.get("/review/pending")
 def get_pending_review_email_list(db: Session = Depends(get_db)):
     pending_emails = get_pending_review_emails(db)
@@ -537,6 +582,32 @@ def get_email_system_logs(
         "email_id": email_id,
         "count": len(logs),
         "logs": logs,
+    }
+
+
+@router.get("/{email_id:int}/model-prediction")
+def get_model_prediction(
+    email_id: int,
+    db: Session = Depends(get_db),
+):
+    email_record = get_email_by_id_from_db(db, email_id)
+
+    if email_record is None:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    email = email_to_dict(email_record)
+
+    try:
+        prediction = predict_email_with_trained_model(email)
+    except ModelDependencyError as error:
+        raise HTTPException(status_code=500, detail=str(error)) from error
+    except ModelNotTrainedError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+    return {
+        "email_id": email["id"],
+        "subject": email["subject"],
+        "model_prediction": prediction,
     }
 @router.get("/dashboard/operational")
 def get_operational_dashboard(

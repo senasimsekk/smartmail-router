@@ -7,6 +7,7 @@ Kuruma gelen e-postaları konu, öncelik, risk ve ilgili birim açısından anal
 - Sentetik e-posta verisi ile ortak posta kutusu simülasyonu
 - Mail ön işleme: HTML temizleme, imza temizleme, sınıflandırma metni üretme
 - Kural tabanlı sınıflandırma ve mock AI ikinci görüş katmanı
+- Seed veri ve feedback kayıtlarıyla eğitilebilen TF-IDF + Logistic Regression modeli
 - Birim yönlendirme, güven skoru ve insan onayı kuyruğu
 - Ek dosya adı üzerinden dosya türü, OCR ihtiyacı, risk ve evrak kaydı önerisi
 - PDF, DOCX, TXT ve CSV eklerinden metin çıkarma ve sınıflandırmaya dahil etme
@@ -67,7 +68,7 @@ API dokümantasyonu: http://127.0.0.1:8000/docs
 7. Onay bekleyen maili `Onayla` veya `Yönlendir` aksiyonuyla işleme al.
 8. Aktif rolü `İzleyici` yaparak aksiyon butonlarının kapandığını, `Operatör` rolünde tekrar açıldığını göster.
 9. Yanlış yönlendirme simülasyonu için düzeltme formundan yeni kategori/birim seçip feedback kaydet.
-10. Eğitim verisi bölümünden feedback sayısını ve JSONL çıktısını göster.
+10. Eğitim verisi bölümünden modeli eğit, model tahminini kural/AI kararıyla karşılaştır ve JSONL çıktısını göster.
 11. Manuel sentetik mail formuna kısa bir örnek girerek sistemin yeni maili otomatik işlemesini ve SLA durumunun oluşmasını göster.
 
 ## Rol Bazlı Yetki
