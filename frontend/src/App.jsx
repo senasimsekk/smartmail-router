@@ -317,10 +317,10 @@ function buildWorkflowGraph(email, classification, analysis, attachmentAnalysis)
     animated: target === "review" && needsReview,
     markerEnd: {
       type: MarkerType.ArrowClosed,
-      color: needsReview && target === "review" ? "#b42318" : "#1f4e79",
+      color: needsReview && target === "review" ? "#b42318" : "#111827",
     },
     style: {
-      stroke: needsReview && target === "review" ? "#b42318" : "#1f4e79",
+      stroke: needsReview && target === "review" ? "#b42318" : "#111827",
       strokeWidth: 2,
     },
   }));
@@ -822,15 +822,18 @@ function App() {
   );
 
   if (loading) {
-    return <div className="page-loading">SmartMail Router yükleniyor...</div>;
+    return <div className="page-loading">Panel yükleniyor...</div>;
   }
 
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div>
-          <p className="eyebrow">Kurumsal E-posta Sınıflandırma</p>
-          <h1>SmartMail Router</h1>
+        <div className="topbar-brand">
+          <span className="rk-mark" aria-hidden="true">RK</span>
+          <div>
+            <p className="eyebrow">Rekabet Kurumu</p>
+            <h1>Kurumsal E-Posta Operasyon Paneli</h1>
+          </div>
         </div>
         <div className="topbar-actions">
           <label className="role-selector">
