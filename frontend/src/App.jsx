@@ -253,6 +253,32 @@ function getDecisionSourceLabel(source) {
   return DECISION_SOURCE_LABELS[source] || source;
 }
 
+function getAttachmentRiskTone(attachment) {
+  if (
+    attachment?.risk_level === "Kritik" ||
+    attachment?.malware_risk === "Şüpheli"
+  ) {
+    return "danger";
+  }
+
+  if (
+    attachment?.risk_level === "Yüksek" ||
+    attachment?.risk_level === "Orta" ||
+    attachment?.contains_personal_data ||
+    attachment?.requires_human_review
+  ) {
+    return "warning";
+  }
+
+  return "success";
+}
+
+function getAttachmentTextStatus(filename, attachmentTexts = []) {
+  const attachmentText = attachmentTexts.find((item) => item.filename === filename);
+
+  return attachmentText?.status || "Metin bekleniyor";
+}
+
 function getRolePolicy(role) {
   return ROLE_OPTIONS.find((option) => option.role === role) || ROLE_OPTIONS[1];
 }
@@ -1437,69 +1463,130 @@ function App() {
                         </form>
 
                         {!attachmentAnalysis.has_attachments ? (
-                          <p className="muted">Bu e-postada ek dosya yok.</p>
+                          <div className="attachment-empty-state">
+                            <strong>Bu kayda iliştirilmiş dosya bulunmuyor.</strong>
+                            <span>
+                              Mail gövdesi üzerinden sınıflandırma yapılabilir; dosya
+                              gelirse OCR, güvenlik ve kişisel veri kontrolleri burada
+                              görünür.
+                            </span>
+                          </div>
                         ) : (
                           <>
-                            <div className="analysis-grid">
-                              <Meta
-                                label="Ek sayısı"
-                                value={attachmentAnalysis.attachment_count}
-                              />
-                              <Meta
-                                label="Genel risk"
-                                value={attachmentAnalysis.overall_risk_level}
-                              />
-                              <Meta
-                                label="Evrak kaydı"
-                                value={
-                                  attachmentAnalysis.requires_record
-                                    ? "Gerekli"
-                                    : "Gerekli değil"
-                                }
-                              />
-                              <Meta
-                                label="İnsan onayı"
-                                value={
-                                  attachmentAnalysis.requires_human_review
-                                    ? "Gerekli"
-                                    : "Gerekli değil"
-                                }
-                              />
-                            </div>
-                            {attachmentAnalysis.attachments?.map((attachment) => (
-                              <div className="attachment-row" key={attachment.filename}>
-                                <strong>{attachment.filename}</strong>
-                                <span>{attachment.file_type}</span>
-                                <span>{attachment.risk_level}</span>
-                                <span>
-                                  {attachment.contains_personal_data
-                                    ? "Kişisel veri işareti var"
-                                    : "Kişisel veri işareti yok"}
-                                </span>
-                                <span>{attachment.malware_risk}</span>
-                                <span>
-                                  {attachment.ocr_required ? "OCR gerekli" : "OCR gerekmedi"}
-                                </span>
-                                <p>
-                                  <b>Konu:</b> {attachment.extracted_topic}
-                                  {attachment.extracted_file_numbers?.length > 0 &&
-                                    ` | Dosya no: ${attachment.extracted_file_numbers.join(", ")}`}
-                                  {attachment.extracted_dates?.length > 0 &&
-                                    ` | Tarih: ${attachment.extracted_dates.join(", ")}`}
-                                </p>
-                                {attachment.personal_data_indicators?.length > 0 && (
-                                  <p>
-                                    <b>Kişisel veri:</b>{" "}
-                                    {attachment.personal_data_indicators.join(", ")}
-                                  </p>
-                                )}
-                                <p>
-                                  <b>Güvenlik:</b>{" "}
-                                  {attachment.security_warnings?.join(" ")}
-                                </p>
-                                <p>{attachment.suggested_action}</p>
+                            <div className="attachment-summary-panel">
+                              <div>
+                                <span>Dosya İnceleme Özeti</span>
+                                <strong>{attachmentAnalysis.summary}</strong>
                               </div>
-                            ))}
+                              <div className="attachment-summary-grid">
+                                <Meta
+                                  label="Ek sayısı"
+                                  value={attachmentAnalysis.attachment_count}
+                                />
+                                <Meta
+                                  label="Genel risk"
+                                  value={attachmentAnalysis.overall_risk_level}
+                                />
+                                <Meta
+                                  label="Evrak kaydı"
+                                  value={
+                                    attachmentAnalysis.requires_record
+                                      ? "Gerekli"
+                                      : "Gerekli değil"
+                                  }
+                                />
+                                <Meta
+                                  label="İnsan onayı"
+                                  value={
+                                    attachmentAnalysis.requires_human_review
+                                      ? "Gerekli"
+                                      : "Gerekli değil"
+                                  }
+                                />
+                              </div>
+                            </div>
+
+                            <div className="attachment-card-list">
+                              {attachmentAnalysis.attachments?.map((attachment) => {
+                                const riskTone = getAttachmentRiskTone(attachment);
+
+                                return (
+                                  <article
+                                    className={`attachment-card ${riskTone}`}
+                                    key={attachment.filename}
+                                  >
+                                    <div className="attachment-card-header">
+                                      <div>
+                                        <span>{attachment.file_type}</span>
+                                        <h4>{attachment.filename}</h4>
+                                      </div>
+                                      <strong>{attachment.risk_level}</strong>
+                                    </div>
+
+                                    <div className="attachment-status-grid">
+                                      <Meta
+                                        label="Metin durumu"
+                                        value={getAttachmentTextStatus(
+                                          attachment.filename,
+                                          attachmentTexts
+                                        )}
+                                      />
+                                      <Meta
+                                        label="OCR"
+                                        value={
+                                          attachment.ocr_required
+                                            ? "Gerekli"
+                                            : "Gerekli değil"
+                                        }
+                                      />
+                                      <Meta
+                                        label="Güvenlik"
+                                        value={`${attachment.security_scan_status} / ${attachment.malware_risk}`}
+                                      />
+                                      <Meta
+                                        label="Kişisel veri"
+                                        value={
+                                          attachment.contains_personal_data
+                                            ? "İşaret var"
+                                            : "İşaret yok"
+                                        }
+                                      />
+                                    </div>
+
+                                    <div className="attachment-detail-grid">
+                                      <TextBlock
+                                        title="Çıkarılan konu"
+                                        text={attachment.extracted_topic}
+                                      />
+                                      <TextBlock
+                                        title="Dosya no / tarih"
+                                        text={[
+                                          attachment.extracted_file_numbers?.join(", "),
+                                          attachment.extracted_dates?.join(", "),
+                                        ]
+                                          .filter(Boolean)
+                                          .join(" / ") || "-"}
+                                      />
+                                      <TextBlock
+                                        title="Kişisel veri bulgusu"
+                                        text={
+                                          attachment.personal_data_indicators?.join(", ") ||
+                                          "Belirgin kişisel veri işareti yok."
+                                        }
+                                      />
+                                      <TextBlock
+                                        title="Güvenlik uyarısı"
+                                        text={attachment.security_warnings?.join(" ")}
+                                      />
+                                    </div>
+
+                                    <div className="attachment-action-note">
+                                      {attachment.suggested_action}
+                                    </div>
+                                  </article>
+                                );
+                              })}
+                            </div>
                           </>
                         )}
 
