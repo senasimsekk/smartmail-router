@@ -569,6 +569,44 @@ textarea {
   border-top: 1px solid var(--line);
 }
 
+.detail-tabs-section {
+  margin-top: 18px;
+}
+
+.detail-tab-list {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+}
+
+.detail-tab-list button {
+  min-height: 42px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
+.detail-tab-list button:hover,
+.detail-tab-list button.active {
+  border-bottom-color: var(--brand);
+  background: #fff6f6;
+  color: var(--brand-dark);
+}
+
+.detail-tab-panel {
+  min-height: 280px;
+}
+
+.section-block.first-section {
+  margin-top: 0;
+  border-top: 0;
+}
+
 .text-block {
   margin-top: 12px;
 }

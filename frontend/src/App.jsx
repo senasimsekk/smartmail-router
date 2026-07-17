@@ -108,6 +108,14 @@ const STATUS_FILTERS = [
   { value: "Corrected", label: "Düzeltildi" },
 ];
 
+const DETAIL_TABS = [
+  { value: "analysis", label: "Analiz" },
+  { value: "attachments", label: "Ekler" },
+  { value: "routing", label: "Yönlendirme" },
+  { value: "ticket", label: "Evrak Kaydı" },
+  { value: "logs", label: "Günlük" },
+];
+
 const STATUS_LABELS = {
   New: "Yeni",
   Classified: "Sınıflandırıldı",
@@ -453,6 +461,7 @@ function App() {
   const [slaFilter, setSlaFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [queueSearch, setQueueSearch] = useState("");
+  const [activeDetailTab, setActiveDetailTab] = useState("analysis");
 
   const selectedEmail = useMemo(
     () => emails.find((email) => email.id === selectedEmailId) || null,
@@ -612,6 +621,12 @@ function App() {
       fetchEmailDetails(selectedEmailId);
     }
   }, [fetchEmailDetails, selectedEmailId]);
+
+  useEffect(() => {
+    // Yeni kayıt seçildiğinde detay sekmesi karar özetinden başlar.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setActiveDetailTab("analysis");
+  }, [selectedEmailId]);
 
   async function handleProcessEmail() {
     if (!selectedEmail) {
@@ -1240,433 +1255,464 @@ function App() {
               )}
 
               {!detailsLoading && details && (
-                <>
-                  <section className="section-block">
-                    <div className="panel-heading">
-                      <h3>Sınıflandırma ve Risk</h3>
-                      <span>{formatPercent(classification.confidence_score)}</span>
-                    </div>
-
-                    <div className="analysis-grid">
-                      <Meta label="Kategori" value={classification.category} />
-                      <Meta label="Birim" value={classification.department} />
-                      <Meta label="Öncelik" value={classification.priority} />
-                      <Meta
-                        label="İnsan onayı"
-                        value={
-                          classification.requires_human_review
-                            ? "Gerekli"
-                            : "Gerekli değil"
-                        }
-                      />
-                      <Meta label="Risk" value={analysis.risk_level} />
-                      <Meta label="İşlem türü" value={analysis.operation_type} />
-                      <Meta
-                        label="Süre hedefi"
-                        value={getSlaLabel(sla.status_label || sla.status)}
-                      />
-                      <Meta label="Son tarih" value={formatDate(sla.due_at)} />
-                      <Meta
-                        label="Kalan süre"
-                        value={formatRemainingDays(sla.remaining_days)}
-                      />
-                    </div>
-
-                    <TextBlock title="Özet" text={analysis.summary} />
-                    <TextBlock
-                      title="Süre hedefi politikası"
-                      text={
-                        sla.policy_name
-                          ? `${sla.policy_name}: ${sla.sla_days} gün içinde işlem hedeflenir.`
-                          : "-"
-                      }
-                    />
-                    <TextBlock
-                      title="Sistem açıklaması"
-                      text={classification.explanation}
-                    />
-                    <ListBlock
-                      title="Risk nedenleri"
-                      items={analysis.risk_reasons}
-                    />
-                  </section>
-
-                  <section className="section-block">
-                    <h3>Bilgi Çıkarımı</h3>
-                    <div className="analysis-grid">
-                      <Meta label="Talep sahibi" value={extracted.sender} />
-                      <Meta
-                        label="Gizlilik"
-                        value={extracted.confidentiality_level}
-                      />
-                      <Meta
-                        label="Talep edilen işlem"
-                        value={extracted.requested_action}
-                      />
-                      <Meta
-                        label="Dosya no"
-                        value={extracted.file_numbers?.join(", ") || "-"}
-                      />
-                      <Meta
-                        label="Başvuru no"
-                        value={extracted.application_numbers?.join(", ") || "-"}
-                      />
-                      <Meta
-                        label="Mevzuat"
-                        value={extracted.related_legislation?.join(", ") || "-"}
-                      />
-                    </div>
-                  </section>
-
-                  <section className="section-block">
-                    <h3>Ek Dosya Analizi</h3>
-                    <form
-                      className="attachment-upload-form"
-                      onSubmit={handleAttachmentUpload}
-                    >
-                      <input
-                        type="file"
-                        accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.jpg,.jpeg,.png,.tiff,.bmp,.webp,.zip,.rar,.7z,.p7s,.asice,.mht,.txt"
-                        onChange={(event) =>
-                          setSelectedAttachmentFile(
-                            event.target.files?.[0] || null
-                          )
-                        }
-                      />
+                <section className="detail-tabs-section">
+                  <div className="detail-tab-list" role="tablist" aria-label="E-posta detay sekmeleri">
+                    {DETAIL_TABS.map((tab) => (
                       <button
-                        disabled={!can("upload_attachment")}
-                        type="submit"
+                        key={tab.value}
+                        className={activeDetailTab === tab.value ? "active" : ""}
+                        type="button"
+                        role="tab"
+                        aria-selected={activeDetailTab === tab.value}
+                        onClick={() => setActiveDetailTab(tab.value)}
                       >
-                        Ek Yükle ve Oku
+                        {tab.label}
                       </button>
-                    </form>
+                    ))}
+                  </div>
 
-                    {!attachmentAnalysis.has_attachments ? (
-                      <p className="muted">Bu e-postada ek dosya yok.</p>
-                    ) : (
+                  <div className="detail-tab-panel" role="tabpanel">
+                    {activeDetailTab === "analysis" && (
                       <>
-                        <div className="analysis-grid">
-                          <Meta
-                            label="Ek sayısı"
-                            value={attachmentAnalysis.attachment_count}
-                          />
-                          <Meta
-                            label="Genel risk"
-                            value={attachmentAnalysis.overall_risk_level}
-                          />
-                          <Meta
-                            label="Evrak kaydı"
-                            value={
-                              attachmentAnalysis.requires_record
-                                ? "Gerekli"
-                                : "Gerekli değil"
-                            }
-                          />
-                          <Meta
-                            label="İnsan onayı"
-                            value={
-                              attachmentAnalysis.requires_human_review
-                                ? "Gerekli"
-                                : "Gerekli değil"
-                            }
-                          />
-                        </div>
-                        {attachmentAnalysis.attachments?.map((attachment) => (
-                          <div className="attachment-row" key={attachment.filename}>
-                            <strong>{attachment.filename}</strong>
-                            <span>{attachment.file_type}</span>
-                            <span>{attachment.risk_level}</span>
-                            <span>
-                              {attachment.contains_personal_data
-                                ? "Kişisel veri işareti var"
-                                : "Kişisel veri işareti yok"}
-                            </span>
-                            <span>{attachment.malware_risk}</span>
-                            <span>
-                              {attachment.ocr_required ? "OCR gerekli" : "OCR gerekmedi"}
-                            </span>
-                            <p>
-                              <b>Konu:</b> {attachment.extracted_topic}
-                              {attachment.extracted_file_numbers?.length > 0 &&
-                                ` | Dosya no: ${attachment.extracted_file_numbers.join(", ")}`}
-                              {attachment.extracted_dates?.length > 0 &&
-                                ` | Tarih: ${attachment.extracted_dates.join(", ")}`}
-                            </p>
-                            {attachment.personal_data_indicators?.length > 0 && (
-                              <p>
-                                <b>Kişisel veri:</b>{" "}
-                                {attachment.personal_data_indicators.join(", ")}
-                              </p>
-                            )}
-                            <p>
-                              <b>Güvenlik:</b>{" "}
-                              {attachment.security_warnings?.join(" ")}
-                            </p>
-                            <p>{attachment.suggested_action}</p>
+                        <section className="section-block first-section">
+                          <div className="panel-heading">
+                            <h3>Sınıflandırma ve Risk</h3>
+                            <span>{formatPercent(classification.confidence_score)}</span>
                           </div>
-                        ))}
+
+                          <div className="analysis-grid">
+                            <Meta label="Kategori" value={classification.category} />
+                            <Meta label="Birim" value={classification.department} />
+                            <Meta label="Öncelik" value={classification.priority} />
+                            <Meta
+                              label="İnsan onayı"
+                              value={
+                                classification.requires_human_review
+                                  ? "Gerekli"
+                                  : "Gerekli değil"
+                              }
+                            />
+                            <Meta label="Risk" value={analysis.risk_level} />
+                            <Meta label="İşlem türü" value={analysis.operation_type} />
+                            <Meta
+                              label="Süre hedefi"
+                              value={getSlaLabel(sla.status_label || sla.status)}
+                            />
+                            <Meta label="Son tarih" value={formatDate(sla.due_at)} />
+                            <Meta
+                              label="Kalan süre"
+                              value={formatRemainingDays(sla.remaining_days)}
+                            />
+                          </div>
+
+                          <TextBlock title="Özet" text={analysis.summary} />
+                          <TextBlock
+                            title="Süre hedefi politikası"
+                            text={
+                              sla.policy_name
+                                ? `${sla.policy_name}: ${sla.sla_days} gün içinde işlem hedeflenir.`
+                                : "-"
+                            }
+                          />
+                          <TextBlock
+                            title="Sistem açıklaması"
+                            text={classification.explanation}
+                          />
+                          <ListBlock
+                            title="Risk nedenleri"
+                            items={analysis.risk_reasons}
+                          />
+                        </section>
+
+                        <section className="section-block">
+                          <h3>Bilgi Çıkarımı</h3>
+                          <div className="analysis-grid">
+                            <Meta label="Talep sahibi" value={extracted.sender} />
+                            <Meta
+                              label="Gizlilik"
+                              value={extracted.confidentiality_level}
+                            />
+                            <Meta
+                              label="Talep edilen işlem"
+                              value={extracted.requested_action}
+                            />
+                            <Meta
+                              label="Dosya no"
+                              value={extracted.file_numbers?.join(", ") || "-"}
+                            />
+                            <Meta
+                              label="Başvuru no"
+                              value={extracted.application_numbers?.join(", ") || "-"}
+                            />
+                            <Meta
+                              label="Mevzuat"
+                              value={extracted.related_legislation?.join(", ") || "-"}
+                            />
+                          </div>
+                        </section>
+
+                        <section className="section-block">
+                          <h3>Yapay Zeka ve Kural Kararı</h3>
+                          <div className="analysis-grid">
+                            <Meta
+                              label="Kural kategorisi"
+                              value={ruleBasedClassification.category}
+                            />
+                            <Meta
+                              label="Yapay zeka kategorisi"
+                              value={mockAiClassification.ai_category}
+                            />
+                            <Meta
+                              label="Yapay zeka güveni"
+                              value={formatPercent(
+                                mockAiClassification.ai_confidence_score
+                              )}
+                            />
+                            <Meta
+                              label="Karar kaynağı"
+                              value={
+                                getDecisionSourceLabel(
+                                  aiAnalysis.final_recommendation
+                                    ?.final_decision_source
+                                )
+                              }
+                            />
+                          </div>
+                        </section>
+
+                        <section className="section-block">
+                          <h3>Eğitilebilir Model</h3>
+                          {!details.modelPrediction ? (
+                            <p className="muted">
+                              Model henüz eğitilmedi veya tahmin üretmeye hazır değil.
+                            </p>
+                          ) : (
+                            <div className="analysis-grid">
+                              <Meta
+                                label="Model kategorisi"
+                                value={trainedModelPrediction.category}
+                              />
+                              <Meta
+                                label="Model birimi"
+                                value={trainedModelPrediction.department}
+                              />
+                              <Meta
+                                label="Model önceliği"
+                                value={trainedModelPrediction.priority}
+                              />
+                              <Meta
+                                label="Model güveni"
+                                value={formatPercent(
+                                  trainedModelPrediction.confidence_score
+                                )}
+                              />
+                            </div>
+                          )}
+                        </section>
                       </>
                     )}
 
-                    {attachmentTexts.length > 0 && (
-                      <div className="extracted-text-list">
-                        <h4>Ekten Çıkarılan Metin</h4>
-                        {attachmentTexts.map((attachmentText) => (
-                          <div
-                            className="extracted-text-card"
-                            key={attachmentText.filename}
-                          >
-                            <div className="status-row">
-                              <strong>{attachmentText.filename}</strong>
-                              <span>{attachmentText.status}</span>
-                            </div>
-                            <p>
-                              {attachmentText.extracted_text ||
-                                attachmentText.warning ||
-                                "Metin bulunamadı."}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </section>
-
-                  <section className="section-block">
-                    <div className="panel-heading">
-                      <h3>Evrak/Talep Kaydı</h3>
-                      {!ticket && (
-                        <button
-                          className="secondary-button small-button"
-                          disabled={!can("route_email")}
-                          type="button"
-                          onClick={handleCreateTicket}
+                    {activeDetailTab === "attachments" && (
+                      <section className="section-block first-section">
+                        <h3>Ek Dosya Analizi</h3>
+                        <form
+                          className="attachment-upload-form"
+                          onSubmit={handleAttachmentUpload}
                         >
-                          Kayıt Aç
-                        </button>
-                      )}
-                    </div>
-                    {!ticket ? (
-                      <p className="empty-log">
-                        Bu e-posta için henüz evrak/talep kaydı açılmadı.
-                      </p>
-                    ) : (
-                      <>
-                        <div className="analysis-grid">
-                          <Meta label="Kayıt no" value={ticket.record_number} />
-                          <Meta label="Başvuru türü" value={ticket.application_type} />
-                          <Meta label="Birim" value={ticket.assigned_department} />
-                          <Meta label="Sorumlu" value={ticket.responsible_person || "-"} />
-                          <Meta label="Durum" value={ticket.status} />
-                          <Meta label="Öncelik" value={ticket.priority} />
-                          <Meta label="Son tarih" value={formatDate(ticket.sla_due_at)} />
-                        </div>
-                        <div className="ticket-actions">
+                          <input
+                            type="file"
+                            accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.jpg,.jpeg,.png,.tiff,.bmp,.webp,.zip,.rar,.7z,.p7s,.asice,.mht,.txt"
+                            onChange={(event) =>
+                              setSelectedAttachmentFile(
+                                event.target.files?.[0] || null
+                              )
+                            }
+                          />
                           <button
-                            className="secondary-button small-button"
-                            disabled={!can("route_email")}
-                            type="button"
-                            onClick={() => handleAdvanceTicketStatus(ticket)}
+                            disabled={!can("upload_attachment")}
+                            type="submit"
                           >
-                            Durumu İlerlet
+                            Ek Yükle ve Oku
                           </button>
-                        </div>
-                        {ticket.notes?.length > 0 && (
-                          <div className="ticket-notes">
-                            <h4>Notlar</h4>
-                            {ticket.notes.slice(-3).map((note) => (
-                              <p key={`${note.created_at}-${note.text}`}>
-                                {note.text}
-                              </p>
+                        </form>
+
+                        {!attachmentAnalysis.has_attachments ? (
+                          <p className="muted">Bu e-postada ek dosya yok.</p>
+                        ) : (
+                          <>
+                            <div className="analysis-grid">
+                              <Meta
+                                label="Ek sayısı"
+                                value={attachmentAnalysis.attachment_count}
+                              />
+                              <Meta
+                                label="Genel risk"
+                                value={attachmentAnalysis.overall_risk_level}
+                              />
+                              <Meta
+                                label="Evrak kaydı"
+                                value={
+                                  attachmentAnalysis.requires_record
+                                    ? "Gerekli"
+                                    : "Gerekli değil"
+                                }
+                              />
+                              <Meta
+                                label="İnsan onayı"
+                                value={
+                                  attachmentAnalysis.requires_human_review
+                                    ? "Gerekli"
+                                    : "Gerekli değil"
+                                }
+                              />
+                            </div>
+                            {attachmentAnalysis.attachments?.map((attachment) => (
+                              <div className="attachment-row" key={attachment.filename}>
+                                <strong>{attachment.filename}</strong>
+                                <span>{attachment.file_type}</span>
+                                <span>{attachment.risk_level}</span>
+                                <span>
+                                  {attachment.contains_personal_data
+                                    ? "Kişisel veri işareti var"
+                                    : "Kişisel veri işareti yok"}
+                                </span>
+                                <span>{attachment.malware_risk}</span>
+                                <span>
+                                  {attachment.ocr_required ? "OCR gerekli" : "OCR gerekmedi"}
+                                </span>
+                                <p>
+                                  <b>Konu:</b> {attachment.extracted_topic}
+                                  {attachment.extracted_file_numbers?.length > 0 &&
+                                    ` | Dosya no: ${attachment.extracted_file_numbers.join(", ")}`}
+                                  {attachment.extracted_dates?.length > 0 &&
+                                    ` | Tarih: ${attachment.extracted_dates.join(", ")}`}
+                                </p>
+                                {attachment.personal_data_indicators?.length > 0 && (
+                                  <p>
+                                    <b>Kişisel veri:</b>{" "}
+                                    {attachment.personal_data_indicators.join(", ")}
+                                  </p>
+                                )}
+                                <p>
+                                  <b>Güvenlik:</b>{" "}
+                                  {attachment.security_warnings?.join(" ")}
+                                </p>
+                                <p>{attachment.suggested_action}</p>
+                              </div>
+                            ))}
+                          </>
+                        )}
+
+                        {attachmentTexts.length > 0 && (
+                          <div className="extracted-text-list">
+                            <h4>Ekten Çıkarılan Metin</h4>
+                            {attachmentTexts.map((attachmentText) => (
+                              <div
+                                className="extracted-text-card"
+                                key={attachmentText.filename}
+                              >
+                                <div className="status-row">
+                                  <strong>{attachmentText.filename}</strong>
+                                  <span>{attachmentText.status}</span>
+                                </div>
+                                <p>
+                                  {attachmentText.extracted_text ||
+                                    attachmentText.warning ||
+                                    "Metin bulunamadı."}
+                                </p>
+                              </div>
                             ))}
                           </div>
                         )}
+                      </section>
+                    )}
+
+                    {activeDetailTab === "routing" && (
+                      <>
+                        <section className="section-block first-section">
+                          <h3>Cevap Önerisi</h3>
+                          {responseSuggestion.warning && (
+                            <div className="alert warning">
+                              {responseSuggestion.warning}
+                            </div>
+                          )}
+                          <div className="response-box">
+                            {responseSuggestion.suggested_response ||
+                              "Cevap önerisi üretilemedi."}
+                          </div>
+                        </section>
+
+                        <section className="section-block">
+                          <div className="panel-heading">
+                            <h3>İş Akışı</h3>
+                            <span>{getStatusLabel(selectedEmail.routing_status)}</span>
+                          </div>
+                          <div className="workflow-canvas">
+                            <ReactFlow
+                              nodes={workflowGraph.nodes}
+                              edges={workflowGraph.edges}
+                              fitView
+                              fitViewOptions={{ padding: 0.18 }}
+                              nodesDraggable={false}
+                              nodesConnectable={false}
+                              elementsSelectable={false}
+                              panOnScroll
+                              proOptions={{ hideAttribution: true }}
+                            >
+                              <Background gap={18} size={1} />
+                              <Controls showInteractive={false} />
+                            </ReactFlow>
+                          </div>
+                        </section>
+
+                        <section className="section-block correction-section">
+                          <h3>Yönlendirme Düzeltme</h3>
+                          <form className="correction-form" onSubmit={handleCorrectRouting}>
+                            <label>
+                              <span>Kategori</span>
+                              <select
+                                value={correctionForm.corrected_category}
+                                onChange={(event) =>
+                                  setCorrectionForm({
+                                    ...correctionForm,
+                                    corrected_category: event.target.value,
+                                  })
+                                }
+                              >
+                                {CATEGORY_OPTIONS.map((category) => (
+                                  <option key={category}>{category}</option>
+                                ))}
+                              </select>
+                            </label>
+                            <label>
+                              <span>Birim</span>
+                              <select
+                                value={correctionForm.corrected_department}
+                                onChange={(event) =>
+                                  setCorrectionForm({
+                                    ...correctionForm,
+                                    corrected_department: event.target.value,
+                                  })
+                                }
+                              >
+                                {DEPARTMENT_OPTIONS.map((department) => (
+                                  <option key={department}>{department}</option>
+                                ))}
+                              </select>
+                            </label>
+                            <label>
+                              <span>Öncelik</span>
+                              <select
+                                value={correctionForm.corrected_priority}
+                                onChange={(event) =>
+                                  setCorrectionForm({
+                                    ...correctionForm,
+                                    corrected_priority: event.target.value,
+                                  })
+                                }
+                              >
+                                {PRIORITY_OPTIONS.map((priority) => (
+                                  <option key={priority}>{priority}</option>
+                                ))}
+                              </select>
+                            </label>
+                            <label>
+                              <span>Not</span>
+                              <input
+                                value={correctionForm.feedback_note}
+                                onChange={(event) =>
+                                  setCorrectionForm({
+                                    ...correctionForm,
+                                    feedback_note: event.target.value,
+                                  })
+                                }
+                                placeholder="Geri bildirim notu"
+                              />
+                            </label>
+                            <button
+                              disabled={!can("correct_routing")}
+                              type="submit"
+                            >
+                              Düzeltmeyi Kaydet
+                            </button>
+                          </form>
+                        </section>
                       </>
                     )}
-                  </section>
 
-                  <section className="section-block">
-                    <h3>Cevap Önerisi</h3>
-                    {responseSuggestion.warning && (
-                      <div className="alert warning">
-                        {responseSuggestion.warning}
-                      </div>
-                    )}
-                    <div className="response-box">
-                      {responseSuggestion.suggested_response ||
-                        "Cevap önerisi üretilemedi."}
-                    </div>
-                  </section>
-
-                  <section className="section-block">
-                    <h3>Yapay Zeka ve Kural Kararı</h3>
-                    <div className="analysis-grid">
-                      <Meta
-                        label="Kural kategorisi"
-                        value={ruleBasedClassification.category}
-                      />
-                      <Meta
-                        label="Yapay zeka kategorisi"
-                        value={mockAiClassification.ai_category}
-                      />
-                      <Meta
-                        label="Yapay zeka güveni"
-                        value={formatPercent(
-                          mockAiClassification.ai_confidence_score
-                        )}
-                      />
-                      <Meta
-                        label="Karar kaynağı"
-                        value={
-                          getDecisionSourceLabel(
-                            aiAnalysis.final_recommendation
-                              ?.final_decision_source
-                          )
-                        }
-                      />
-                    </div>
-                  </section>
-
-                  <section className="section-block">
-                    <h3>Eğitilebilir Model</h3>
-                    {!details.modelPrediction ? (
-                      <p className="muted">
-                        Model henüz eğitilmedi veya tahmin üretmeye hazır değil.
-                      </p>
-                    ) : (
-                      <div className="analysis-grid">
-                        <Meta
-                          label="Model kategorisi"
-                          value={trainedModelPrediction.category}
-                        />
-                        <Meta
-                          label="Model birimi"
-                          value={trainedModelPrediction.department}
-                        />
-                        <Meta
-                          label="Model önceliği"
-                          value={trainedModelPrediction.priority}
-                        />
-                        <Meta
-                          label="Model güveni"
-                          value={formatPercent(
-                            trainedModelPrediction.confidence_score
+                    {activeDetailTab === "ticket" && (
+                      <section className="section-block first-section">
+                        <div className="panel-heading">
+                          <h3>Evrak/Talep Kaydı</h3>
+                          {!ticket && (
+                            <button
+                              className="secondary-button small-button"
+                              disabled={!can("route_email")}
+                              type="button"
+                              onClick={handleCreateTicket}
+                            >
+                              Kayıt Aç
+                            </button>
                           )}
-                        />
-                      </div>
-                    )}
-                  </section>
-
-                  <section className="section-block">
-                    <div className="panel-heading">
-                      <h3>İş Akışı</h3>
-                      <span>{getStatusLabel(selectedEmail.routing_status)}</span>
-                    </div>
-                    <div className="workflow-canvas">
-                      <ReactFlow
-                        nodes={workflowGraph.nodes}
-                        edges={workflowGraph.edges}
-                        fitView
-                        fitViewOptions={{ padding: 0.18 }}
-                        nodesDraggable={false}
-                        nodesConnectable={false}
-                        elementsSelectable={false}
-                        panOnScroll
-                        proOptions={{ hideAttribution: true }}
-                      >
-                        <Background gap={18} size={1} />
-                        <Controls showInteractive={false} />
-                      </ReactFlow>
-                    </div>
-                  </section>
-
-                  <section className="section-block correction-section">
-                    <h3>Yönlendirme Düzeltme</h3>
-                    <form className="correction-form" onSubmit={handleCorrectRouting}>
-                      <label>
-                        <span>Kategori</span>
-                        <select
-                          value={correctionForm.corrected_category}
-                          onChange={(event) =>
-                            setCorrectionForm({
-                              ...correctionForm,
-                              corrected_category: event.target.value,
-                            })
-                          }
-                        >
-                          {CATEGORY_OPTIONS.map((category) => (
-                            <option key={category}>{category}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        <span>Birim</span>
-                        <select
-                          value={correctionForm.corrected_department}
-                          onChange={(event) =>
-                            setCorrectionForm({
-                              ...correctionForm,
-                              corrected_department: event.target.value,
-                            })
-                          }
-                        >
-                          {DEPARTMENT_OPTIONS.map((department) => (
-                            <option key={department}>{department}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        <span>Öncelik</span>
-                        <select
-                          value={correctionForm.corrected_priority}
-                          onChange={(event) =>
-                            setCorrectionForm({
-                              ...correctionForm,
-                              corrected_priority: event.target.value,
-                            })
-                          }
-                        >
-                          {PRIORITY_OPTIONS.map((priority) => (
-                            <option key={priority}>{priority}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        <span>Not</span>
-                        <input
-                          value={correctionForm.feedback_note}
-                          onChange={(event) =>
-                            setCorrectionForm({
-                              ...correctionForm,
-                              feedback_note: event.target.value,
-                            })
-                          }
-                          placeholder="Geri bildirim notu"
-                        />
-                      </label>
-                      <button
-                        disabled={!can("correct_routing")}
-                        type="submit"
-                      >
-                        Düzeltmeyi Kaydet
-                      </button>
-                    </form>
-                  </section>
-
-                  <section className="section-block">
-                    <h3>İşlem Günlüğü</h3>
-                    {logs.length === 0 ? (
-                      <p className="empty-log">Bu kayıt için işlem günlüğü yok.</p>
-                    ) : (
-                      logs.slice(0, 6).map((log) => (
-                        <div className="log-row" key={log.id}>
-                          <strong>{getLogActionLabel(log.action_type)}</strong>
-                          <span>{getActorLabel(log.actor)}</span>
-                          <p>{getLogDetailLabel(log.action_detail)}</p>
                         </div>
-                      ))
+                        {!ticket ? (
+                          <p className="empty-log">
+                            Bu e-posta için henüz evrak/talep kaydı açılmadı.
+                          </p>
+                        ) : (
+                          <>
+                            <div className="analysis-grid">
+                              <Meta label="Kayıt no" value={ticket.record_number} />
+                              <Meta label="Başvuru türü" value={ticket.application_type} />
+                              <Meta label="Birim" value={ticket.assigned_department} />
+                              <Meta label="Sorumlu" value={ticket.responsible_person || "-"} />
+                              <Meta label="Durum" value={ticket.status} />
+                              <Meta label="Öncelik" value={ticket.priority} />
+                              <Meta label="Son tarih" value={formatDate(ticket.sla_due_at)} />
+                            </div>
+                            <div className="ticket-actions">
+                              <button
+                                className="secondary-button small-button"
+                                disabled={!can("route_email")}
+                                type="button"
+                                onClick={() => handleAdvanceTicketStatus(ticket)}
+                              >
+                                Durumu İlerlet
+                              </button>
+                            </div>
+                            {ticket.notes?.length > 0 && (
+                              <div className="ticket-notes">
+                                <h4>Notlar</h4>
+                                {ticket.notes.slice(-3).map((note) => (
+                                  <p key={`${note.created_at}-${note.text}`}>
+                                    {note.text}
+                                  </p>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </section>
                     )}
-                  </section>
-                </>
+
+                    {activeDetailTab === "logs" && (
+                      <section className="section-block first-section">
+                        <h3>İşlem Günlüğü</h3>
+                        {logs.length === 0 ? (
+                          <p className="empty-log">Bu kayıt için işlem günlüğü yok.</p>
+                        ) : (
+                          logs.slice(0, 6).map((log) => (
+                            <div className="log-row" key={log.id}>
+                              <strong>{getLogActionLabel(log.action_type)}</strong>
+                              <span>{getActorLabel(log.actor)}</span>
+                              <p>{getLogDetailLabel(log.action_detail)}</p>
+                            </div>
+                          ))
+                        )}
+                      </section>
+                    )}
+                  </div>
+                </section>
               )}
             </>
           )}
