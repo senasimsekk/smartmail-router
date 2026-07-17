@@ -39,6 +39,90 @@ def detect_attachment_file_type(filename: str) -> str:
     return "Unknown"
 
 
+def detect_file_security_status(filename: str, file_size: int | None = None) -> dict:
+    extension = get_file_extension(filename)
+    normalized_filename = normalize_text(filename)
+    warnings = []
+
+    if extension in ["exe", "bat", "cmd", "js", "vbs", "scr", "msi"]:
+        warnings.append("Çalıştırılabilir dosya türü güvenlik riski oluşturabilir.")
+
+    if extension in ["zip", "rar", "7z"]:
+        warnings.append("Arşiv dosyası açılmadan önce güvenlik taramasından geçirilmelidir.")
+
+    if contains_any(normalized_filename, ["sifreli", "encrypted", "parola", "password"]):
+        warnings.append("Dosya şifreli olabilir; otomatik metin çıkarma sınırlı kalabilir.")
+
+    if file_size is not None and file_size > 10 * 1024 * 1024:
+        warnings.append("Dosya boyutu 10 MB üzerinde; manuel kontrol önerilir.")
+
+    return {
+        "scan_status": "MVP simülasyonu",
+        "malware_risk": "Şüpheli" if warnings else "Düşük",
+        "is_encrypted": contains_any(
+            normalized_filename,
+            ["sifreli", "encrypted", "parola", "password"],
+        ),
+        "file_size_warning": file_size is not None and file_size > 10 * 1024 * 1024,
+        "warnings": warnings or ["Bilinen riskli dosya işareti tespit edilmedi."],
+    }
+
+
+def detect_personal_data_indicators(text: str) -> dict:
+    normalized_text = normalize_text(text)
+    indicators = []
+
+    indicator_keywords = {
+        "T.C. kimlik/vergi no": ["tc", "tckn", "kimlik", "vergi no", "vergi"],
+        "Telefon": ["telefon", "gsm", "cep", "+90"],
+        "Adres": ["adres", "mahalle", "sokak", "cadde"],
+        "Finansal bilgi": ["iban", "hesap", "dekont", "odeme", "fatura"],
+        "Sağlık bilgisi": ["saglik", "rapor", "hastane"],
+        "İmza/kimlik görseli": ["imza", "kimlik fotokopisi", "nufus"],
+    }
+
+    for label, keywords in indicator_keywords.items():
+        if contains_any(normalized_text, [normalize_text(keyword) for keyword in keywords]):
+            indicators.append(label)
+
+    return {
+        "contains_personal_data": len(indicators) > 0,
+        "indicators": indicators,
+    }
+
+
+def extract_attachment_entities(filename: str, extracted_text: str = "") -> dict:
+    combined_text = f"{filename} {extracted_text}"
+    normalized_text = normalize_text(combined_text)
+
+    topic = "Belirlenemedi"
+
+    if contains_any(normalized_text, ["tebligat", "mahkeme", "dava", "uyap", "kep"]):
+        topic = "Hukuki evrak"
+    elif contains_any(normalized_text, ["kvkk", "kisisel veri", "kimlik"]):
+        topic = "KVKK / kişisel veri"
+    elif contains_any(normalized_text, ["fatura", "odeme", "dekont", "iban"]):
+        topic = "Mali belge"
+    elif contains_any(normalized_text, ["sikayet", "ihbar", "basvuru"]):
+        topic = "Başvuru / şikayet"
+
+    dates = []
+    file_numbers = []
+
+    import re
+
+    dates.extend(re.findall(r"\b\d{2}[./-]\d{2}[./-]\d{4}\b", combined_text))
+    file_numbers.extend(
+        re.findall(r"(?<!\d)20\d{2}-\d{1,3}-\d{3,6}(?!\d)", combined_text)
+    )
+
+    return {
+        "topic": topic,
+        "dates": sorted(set(dates)),
+        "file_numbers": sorted(set(file_numbers)),
+    }
+
+
 def detect_ocr_requirement(filename: str) -> dict:
     extension = get_file_extension(filename)
     normalized_filename = normalize_text(filename)
@@ -203,10 +287,20 @@ def suggest_attachment_action(
     }
 
 
-def analyze_single_attachment(filename: str, classification: dict) -> dict:
+def analyze_single_attachment(
+    filename: str,
+    classification: dict,
+    extracted_text: str = "",
+    file_size: int | None = None,
+) -> dict:
     file_type = detect_attachment_file_type(filename)
     ocr_analysis = detect_ocr_requirement(filename)
     risk_analysis = detect_attachment_risk(filename, classification)
+    security_analysis = detect_file_security_status(filename, file_size)
+    personal_data_analysis = detect_personal_data_indicators(
+        f"{filename} {extracted_text}"
+    )
+    entity_analysis = extract_attachment_entities(filename, extracted_text)
 
     action_analysis = suggest_attachment_action(
         filename=filename,
@@ -219,8 +313,19 @@ def analyze_single_attachment(filename: str, classification: dict) -> dict:
         "filename": filename,
         "file_extension": get_file_extension(filename),
         "file_type": file_type,
+        "text_extraction_status": "Metin çıkarıldı" if extracted_text else "Metin bekleniyor",
         "ocr_required": ocr_analysis["ocr_required"],
         "ocr_reason": ocr_analysis["reason"],
+        "security_scan_status": security_analysis["scan_status"],
+        "malware_risk": security_analysis["malware_risk"],
+        "is_encrypted": security_analysis["is_encrypted"],
+        "file_size_warning": security_analysis["file_size_warning"],
+        "security_warnings": security_analysis["warnings"],
+        "contains_personal_data": personal_data_analysis["contains_personal_data"],
+        "personal_data_indicators": personal_data_analysis["indicators"],
+        "extracted_topic": entity_analysis["topic"],
+        "extracted_dates": entity_analysis["dates"],
+        "extracted_file_numbers": entity_analysis["file_numbers"],
         "risk_level": risk_analysis["risk_level"],
         "risk_reasons": risk_analysis["risk_reasons"],
         "requires_human_review": action_analysis["requires_human_review"],
@@ -231,6 +336,11 @@ def analyze_single_attachment(filename: str, classification: dict) -> dict:
 
 def analyze_attachments(email: dict, classification: dict) -> dict:
     attachment_names = email.get("attachment_names", [])
+    attachment_texts = {
+        item.get("filename"): item
+        for item in email.get("attachment_texts", [])
+        if item.get("filename")
+    }
 
     if not attachment_names:
         return {
@@ -244,7 +354,11 @@ def analyze_attachments(email: dict, classification: dict) -> dict:
         }
 
     attachments = [
-        analyze_single_attachment(filename, classification)
+        analyze_single_attachment(
+            filename,
+            classification,
+            extracted_text=attachment_texts.get(filename, {}).get("extracted_text", ""),
+        )
         for filename in attachment_names
     ]
 

@@ -595,7 +595,7 @@ textarea {
 .attachment-row,
 .log-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(110px, 0.7fr) minmax(80px, 0.5fr);
+  grid-template-columns: minmax(0, 1.4fr) repeat(5, minmax(90px, 0.7fr));
   gap: 8px;
   margin-top: 10px;
 }
@@ -710,10 +710,70 @@ textarea {
   text-align: left;
 }
 
+.ticket-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
+.ticket-notes {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.ticket-notes h4 {
+  margin: 0;
+  color: var(--brand-dark);
+  font-size: 13px;
+}
+
+.ticket-notes p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .import-panel form {
   display: grid;
   gap: 12px;
   align-content: start;
+}
+
+.ingestion-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  grid-column: 1 / -1;
+}
+
+.ingestion-header h2,
+.import-panel form h3 {
+  margin: 0;
+  color: var(--brand-dark);
+}
+
+.ingestion-header span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ingestion-header .secondary-button {
+  min-height: 40px;
+  white-space: nowrap;
+}
+
+.import-panel form h3 {
+  font-size: 16px;
 }
 
 .import-panel label {
@@ -932,6 +992,11 @@ textarea {
   .topbar-actions {
     align-items: stretch;
     grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+
+  .ingestion-header {
+    align-items: stretch;
     flex-direction: column;
   }
 

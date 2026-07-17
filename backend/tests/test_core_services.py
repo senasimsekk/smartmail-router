@@ -5,8 +5,16 @@ from app.services.authorization_service import (
     get_available_roles,
     role_has_permission,
 )
+from app.services.attachment_analysis_service import (
+    detect_file_security_status,
+    detect_personal_data_indicators,
+    extract_attachment_entities,
+)
 from app.services.classification_service import classify_email
+from app.services.email_ingestion_service import normalize_attachment_names
+from app.services.email_processing_service import determine_processing_routing_decision
 from app.services.sla_service import calculate_sla
+from app.services.ticket_service import build_record_number, derive_ticket_status
 
 
 def make_email(**overrides):
@@ -117,6 +125,106 @@ class AuthorizationServiceTests(unittest.TestCase):
 
         self.assertIn("admin", roles)
         self.assertIn("viewer", roles)
+
+
+class EmailProcessingServiceTests(unittest.TestCase):
+    def test_auto_routes_high_confidence_non_critical_email(self):
+        decision = determine_processing_routing_decision(
+            {
+                "confidence_score": 0.92,
+                "requires_human_review": False,
+            }
+        )
+
+        self.assertEqual(decision["routing_status"], "Routed")
+        self.assertTrue(decision["auto_route"])
+
+    def test_sends_critical_email_to_human_review(self):
+        decision = determine_processing_routing_decision(
+            {
+                "confidence_score": 0.95,
+                "requires_human_review": True,
+            }
+        )
+
+        self.assertEqual(decision["routing_status"], "Pending Review")
+        self.assertFalse(decision["auto_route"])
+
+    def test_sends_low_confidence_email_to_human_review(self):
+        decision = determine_processing_routing_decision(
+            {
+                "confidence_score": 0.62,
+                "requires_human_review": False,
+            }
+        )
+
+        self.assertEqual(decision["routing_status"], "Pending Review")
+        self.assertFalse(decision["auto_route"])
+
+
+class EmailIngestionServiceTests(unittest.TestCase):
+    def test_normalizes_attachment_names(self):
+        attachment_names = normalize_attachment_names(
+            [" tebligat.pdf ", "", "   ", "kimlik.png"]
+        )
+
+        self.assertEqual(attachment_names, ["tebligat.pdf", "kimlik.png"])
+
+    def test_normalizes_empty_attachment_names(self):
+        self.assertEqual(normalize_attachment_names(None), [])
+
+
+class AttachmentAnalysisServiceTests(unittest.TestCase):
+    def test_detects_archive_security_warning(self):
+        result = detect_file_security_status("belgeler_sifreli.zip")
+
+        self.assertEqual(result["malware_risk"], "Şüpheli")
+        self.assertTrue(result["is_encrypted"])
+
+    def test_detects_personal_data_indicators(self):
+        result = detect_personal_data_indicators(
+            "Başvuru ekinde T.C. kimlik no, telefon ve IBAN bilgisi yer alıyor."
+        )
+
+        self.assertTrue(result["contains_personal_data"])
+        self.assertIn("T.C. kimlik/vergi no", result["indicators"])
+        self.assertIn("Finansal bilgi", result["indicators"])
+
+    def test_extracts_attachment_topic_and_file_number(self):
+        result = extract_attachment_entities(
+            "uyap_tebligat_2025-1-002.pdf",
+            "Mahkeme tebligatı 12/07/2026 tarihinde iletilmiştir.",
+        )
+
+        self.assertEqual(result["topic"], "Hukuki evrak")
+        self.assertIn("2025-1-002", result["file_numbers"])
+        self.assertIn("12/07/2026", result["dates"])
+
+
+class TicketServiceTests(unittest.TestCase):
+    def test_builds_record_number_from_email_id_and_year(self):
+        record_number = build_record_number(
+            email_id=42,
+            created_at=datetime(2026, 7, 17, 12, 0, 0),
+        )
+
+        self.assertEqual(record_number, "RK-2026-000042")
+
+    def test_derives_ticket_status_for_routed_email(self):
+        status = derive_ticket_status(
+            {"routing_status": "Routed"},
+            {"requires_human_review": False},
+        )
+
+        self.assertEqual(status, "Birimine yönlendirildi")
+
+    def test_derives_ticket_status_for_review_email(self):
+        status = derive_ticket_status(
+            {"routing_status": "Pending Review"},
+            {"requires_human_review": True},
+        )
+
+        self.assertEqual(status, "Onay bekliyor")
 
 
 if __name__ == "__main__":

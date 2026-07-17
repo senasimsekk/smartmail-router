@@ -6,7 +6,12 @@ from pypdf import PdfReader
 from sqlalchemy.orm import Session
 
 from app.models.email import Email
-from app.services.attachment_analysis_service import detect_attachment_file_type
+from app.services.attachment_analysis_service import (
+    detect_attachment_file_type,
+    detect_file_security_status,
+    detect_personal_data_indicators,
+    extract_attachment_entities,
+)
 from app.services.email_db_service import email_to_dict
 from app.services.system_log_service import create_system_log
 
@@ -54,9 +59,36 @@ def extract_text_from_plain_file(file_path: Path) -> str:
     return file_path.read_text(encoding="utf-8", errors="ignore").strip()
 
 
+def build_attachment_extraction_metadata(
+    filename: str,
+    file_size: int,
+    extracted_text: str,
+) -> dict:
+    security_analysis = detect_file_security_status(filename, file_size)
+    personal_data_analysis = detect_personal_data_indicators(
+        f"{filename} {extracted_text}"
+    )
+    entity_analysis = extract_attachment_entities(filename, extracted_text)
+
+    return {
+        "file_size": file_size,
+        "security_scan_status": security_analysis["scan_status"],
+        "malware_risk": security_analysis["malware_risk"],
+        "is_encrypted": security_analysis["is_encrypted"],
+        "file_size_warning": security_analysis["file_size_warning"],
+        "security_warnings": security_analysis["warnings"],
+        "contains_personal_data": personal_data_analysis["contains_personal_data"],
+        "personal_data_indicators": personal_data_analysis["indicators"],
+        "extracted_topic": entity_analysis["topic"],
+        "extracted_dates": entity_analysis["dates"],
+        "extracted_file_numbers": entity_analysis["file_numbers"],
+    }
+
+
 def extract_text_from_file(file_path: Path, filename: str) -> dict:
     extension = get_extension(filename)
     file_type = detect_attachment_file_type(filename)
+    file_size = file_path.stat().st_size
 
     try:
         if extension == "pdf":
@@ -73,6 +105,7 @@ def extract_text_from_file(file_path: Path, filename: str) -> dict:
                 "extracted_text": "",
                 "character_count": 0,
                 "warning": "Bu MVP sürümünde bu dosya türünden metin çıkarılmıyor.",
+                **build_attachment_extraction_metadata(filename, file_size, ""),
             }
 
         if len(extracted_text) > MAX_EXTRACTED_TEXT_LENGTH:
@@ -88,6 +121,11 @@ def extract_text_from_file(file_path: Path, filename: str) -> dict:
             "extracted_text": extracted_text,
             "character_count": len(extracted_text),
             "warning": warning,
+            **build_attachment_extraction_metadata(
+                filename,
+                file_size,
+                extracted_text,
+            ),
         }
     except Exception as exc:
         return {
@@ -97,6 +135,7 @@ def extract_text_from_file(file_path: Path, filename: str) -> dict:
             "extracted_text": "",
             "character_count": 0,
             "warning": f"Metin çıkarma sırasında hata oluştu: {exc}",
+            **build_attachment_extraction_metadata(filename, file_size, ""),
         }
 
 

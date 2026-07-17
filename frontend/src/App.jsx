@@ -132,21 +132,40 @@ const LOG_ACTION_LABELS = {
   ROUTING_APPROVED: "Yönlendirme onaylandı",
   ROUTING_CORRECTED: "Yönlendirme düzeltildi",
   ATTACHMENT_UPLOADED: "Ek dosya yüklendi",
+  MAILBOX_SYNCED: "Posta kutusu senkronize edildi",
   MODEL_TRAINED: "Model eğitildi",
+  TICKET_CREATED: "Evrak/talep kaydı oluşturuldu",
+  TICKET_UPDATED: "Evrak/talep kaydı güncellendi",
 };
 
 const LOG_DETAIL_LABELS = {
+  "Email was manually imported into the system.":
+    "E-posta manuel olarak sisteme alındı.",
   "Email was routed to the target department.":
     "E-posta hedef birime yönlendirildi.",
+  "Email was automatically routed after classification.":
+    "E-posta analizden sonra otomatik olarak ilgili birime yönlendirildi.",
   "Email was classified and processing status was updated.":
     "E-posta sınıflandırıldı ve işlem durumu güncellendi.",
+  "Email routing was approved by an operator.":
+    "E-posta yönlendirmesi operatör tarafından onaylandı.",
+  "Email routing was corrected and feedback was saved.":
+    "E-posta yönlendirmesi düzeltildi ve geri bildirim kaydedildi.",
+  "Attachment was uploaded and text extraction was attempted.":
+    "Ek dosya yüklendi ve metin çıkarma denendi.",
   "Trainable email classifier was trained.":
     "Eğitilebilir e-posta sınıflandırma modeli eğitildi.",
+  "Synthetic mailbox was synchronized.":
+    "Sentetik posta kutusu senkronize edildi.",
+  "Ticket record was created or updated for the email.":
+    "E-posta için evrak/talep kaydı oluşturuldu veya güncellendi.",
+  "Ticket record was updated.": "Evrak/talep kaydı güncellendi.",
 };
 
 const ACTOR_LABELS = {
   operator: "Operatör",
   admin: "Yönetici",
+  mailbox_sync: "Posta kutusu",
   system: "Sistem",
 };
 
@@ -550,6 +569,7 @@ function App() {
         ]);
 
       let modelPrediction = null;
+      let ticket = null;
 
       try {
         modelPrediction = await request(`/emails/${emailId}/model-prediction`);
@@ -557,11 +577,19 @@ function App() {
         modelPrediction = null;
       }
 
+      try {
+        const ticketData = await request(`/emails/${emailId}/ticket`);
+        ticket = ticketData.ticket;
+      } catch {
+        ticket = null;
+      }
+
       setDetails({
         analysis,
         aiAnalysis,
         responseSuggestion,
         modelPrediction,
+        ticket,
       });
       setLogs(logData.logs || []);
     } catch (error) {
@@ -732,6 +760,43 @@ function App() {
     }
   }
 
+  async function handleMailboxSync() {
+    setActionMessage("");
+    setErrorMessage("");
+
+    if (!can("import_email")) {
+      setActionMessage("Bu rol posta kutusu senkronizasyonu yapamaz.");
+      return;
+    }
+
+    try {
+      const result = await request("/emails/ingestion/sync", {
+        method: "POST",
+        body: JSON.stringify({
+          source_mailbox: "webmaster@rekabet.gov.tr",
+          limit: 5,
+          actor_role: activeRole,
+          process_after_import: true,
+        }),
+      });
+
+      const firstImportedEmail = result.imported_emails?.[0];
+
+      if (firstImportedEmail) {
+        setSelectedEmailId(firstImportedEmail.id);
+      }
+
+      setActionMessage(
+        result.imported_count > 0
+          ? `${result.imported_count} e-posta alındı, analiz edildi ve uygun akışa yönlendirildi.`
+          : "Webmaster posta kutusunda yeni e-posta yok."
+      );
+      await refreshWorkspace();
+    } catch (error) {
+      setErrorMessage(error.message);
+    }
+  }
+
   async function handleAttachmentUpload(event) {
     event.preventDefault();
 
@@ -870,6 +935,48 @@ function App() {
     }
   }
 
+  async function handleCreateTicket() {
+    if (!selectedEmail) {
+      return;
+    }
+
+    await runEmailAction(
+      `/emails/${selectedEmail.id}/ticket`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          actor_role: activeRole,
+        }),
+      },
+      "Evrak/talep kaydı oluşturuldu."
+    );
+  }
+
+  async function handleAdvanceTicketStatus(ticket) {
+    const nextStatusByCurrentStatus = {
+      Yeni: "İşlemde",
+      Sınıflandırıldı: "İşlemde",
+      "Onay bekliyor": "Birimine yönlendirildi",
+      "Birimine yönlendirildi": "İşlemde",
+      İşlemde: "Cevap bekleniyor",
+      "Cevap bekleniyor": "Tamamlandı",
+    };
+    const nextStatus = nextStatusByCurrentStatus[ticket.status] || "İşlemde";
+
+    await runEmailAction(
+      `/emails/tickets/${ticket.id}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          status: nextStatus,
+          note: `${ticket.status} durumundan ${nextStatus} durumuna alındı.`,
+          actor_role: activeRole,
+        }),
+      },
+      "Evrak/talep kaydı güncellendi."
+    );
+  }
+
   const classification = details?.analysis?.classification || {};
   const analysis = details?.analysis?.analysis || {};
   const sla = analysis?.sla || {};
@@ -878,6 +985,7 @@ function App() {
   const attachmentTexts = selectedEmail?.attachment_texts || [];
   const responseSuggestion =
     details?.responseSuggestion?.response_suggestion || {};
+  const ticket = details?.ticket;
   const aiAnalysis = details?.aiAnalysis?.ai_analysis || {};
   const trainedModelPrediction =
     details?.modelPrediction?.model_prediction?.prediction || {};
@@ -1218,7 +1326,7 @@ function App() {
                     >
                       <input
                         type="file"
-                        accept=".pdf,.docx,.txt,.csv"
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.jpg,.jpeg,.png,.tiff,.bmp,.webp,.zip,.rar,.7z,.p7s,.asice,.mht,.txt"
                         onChange={(event) =>
                           setSelectedAttachmentFile(
                             event.target.files?.[0] || null
@@ -1268,6 +1376,32 @@ function App() {
                             <strong>{attachment.filename}</strong>
                             <span>{attachment.file_type}</span>
                             <span>{attachment.risk_level}</span>
+                            <span>
+                              {attachment.contains_personal_data
+                                ? "Kişisel veri işareti var"
+                                : "Kişisel veri işareti yok"}
+                            </span>
+                            <span>{attachment.malware_risk}</span>
+                            <span>
+                              {attachment.ocr_required ? "OCR gerekli" : "OCR gerekmedi"}
+                            </span>
+                            <p>
+                              <b>Konu:</b> {attachment.extracted_topic}
+                              {attachment.extracted_file_numbers?.length > 0 &&
+                                ` | Dosya no: ${attachment.extracted_file_numbers.join(", ")}`}
+                              {attachment.extracted_dates?.length > 0 &&
+                                ` | Tarih: ${attachment.extracted_dates.join(", ")}`}
+                            </p>
+                            {attachment.personal_data_indicators?.length > 0 && (
+                              <p>
+                                <b>Kişisel veri:</b>{" "}
+                                {attachment.personal_data_indicators.join(", ")}
+                              </p>
+                            )}
+                            <p>
+                              <b>Güvenlik:</b>{" "}
+                              {attachment.security_warnings?.join(" ")}
+                            </p>
                             <p>{attachment.suggested_action}</p>
                           </div>
                         ))}
@@ -1294,6 +1428,59 @@ function App() {
                           </div>
                         ))}
                       </div>
+                    )}
+                  </section>
+
+                  <section className="section-block">
+                    <div className="panel-heading">
+                      <h3>Evrak/Talep Kaydı</h3>
+                      {!ticket && (
+                        <button
+                          className="secondary-button small-button"
+                          disabled={!can("route_email")}
+                          type="button"
+                          onClick={handleCreateTicket}
+                        >
+                          Kayıt Aç
+                        </button>
+                      )}
+                    </div>
+                    {!ticket ? (
+                      <p className="empty-log">
+                        Bu e-posta için henüz evrak/talep kaydı açılmadı.
+                      </p>
+                    ) : (
+                      <>
+                        <div className="analysis-grid">
+                          <Meta label="Kayıt no" value={ticket.record_number} />
+                          <Meta label="Başvuru türü" value={ticket.application_type} />
+                          <Meta label="Birim" value={ticket.assigned_department} />
+                          <Meta label="Sorumlu" value={ticket.responsible_person || "-"} />
+                          <Meta label="Durum" value={ticket.status} />
+                          <Meta label="Öncelik" value={ticket.priority} />
+                          <Meta label="Son tarih" value={formatDate(ticket.sla_due_at)} />
+                        </div>
+                        <div className="ticket-actions">
+                          <button
+                            className="secondary-button small-button"
+                            disabled={!can("route_email")}
+                            type="button"
+                            onClick={() => handleAdvanceTicketStatus(ticket)}
+                          >
+                            Durumu İlerlet
+                          </button>
+                        </div>
+                        {ticket.notes?.length > 0 && (
+                          <div className="ticket-notes">
+                            <h4>Notlar</h4>
+                            {ticket.notes.slice(-3).map((note) => (
+                              <p key={`${note.created_at}-${note.text}`}>
+                                {note.text}
+                              </p>
+                            ))}
+                          </div>
+                        )}
+                      </>
                     )}
                   </section>
 
@@ -1486,8 +1673,23 @@ function App() {
         </section>
 
         <aside className="import-panel">
-          <h2>Manuel Sentetik E-posta</h2>
+          <div className="ingestion-header">
+            <div>
+              <h2>E-posta Alma</h2>
+              <span>webmaster@rekabet.gov.tr ortak kutusu</span>
+            </div>
+            <button
+              className="secondary-button"
+              disabled={!can("import_email")}
+              type="button"
+              onClick={handleMailboxSync}
+            >
+              Posta Kutusunu Senkronize Et
+            </button>
+          </div>
+
           <form onSubmit={handleImportSubmit}>
+            <h3>Manuel E-posta Ekle</h3>
             <label>
               Konu
               <input

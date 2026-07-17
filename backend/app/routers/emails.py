@@ -1,10 +1,14 @@
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from typing import  Optional
 from app.database import get_db
 from collections import Counter
-from app.services.email_ingestion_service import create_email_from_manual_import
+from app.services.email_ingestion_service import (
+    create_email_from_manual_import,
+    sync_synthetic_mailbox,
+)
 from app.services.response_suggestion_service import suggest_email_response
 from app.services.ai_service import analyze_email_with_mock_ai
 from app.services.classification_service import classify_email
@@ -61,6 +65,13 @@ from app.services.system_log_service import (
     get_all_system_logs,
     get_system_logs_by_email_id,
 )
+from app.services.ticket_service import (
+    TICKET_STATUSES,
+    create_or_update_ticket_for_email,
+    get_ticket_by_email_id,
+    ticket_to_dict,
+    update_ticket,
+)
 
 
 router = APIRouter(
@@ -75,6 +86,15 @@ class ManualEmailImportRequest(BaseModel):
     has_attachment:bool = False
     attachment_names: list[str] = Field(default_factory=list)
     actor_role: str = "operator"
+
+
+class MailboxSyncRequest(BaseModel):
+    source_mailbox: str = "webmaster@rekabet.gov.tr"
+    limit: int = Field(default=5, ge=1, le=50)
+    actor_role: str = "operator"
+    process_after_import: bool = True
+
+
 class ApproveRoutingRequest(BaseModel):
     approved_by: str
     actor_role: str = "operator"
@@ -98,6 +118,15 @@ class RouteEmailRequest(BaseModel):
 
 
 class TrainModelRequest(BaseModel):
+    actor_role: str = "operator"
+
+
+class UpdateTicketRequest(BaseModel):
+    status: Optional[str] = None
+    responsible_person: Optional[str] = None
+    note: Optional[str] = None
+    response_text: Optional[str] = None
+    closure_reason: Optional[str] = None
     actor_role: str = "operator"
 
 
@@ -437,6 +466,99 @@ def get_trainable_model_status():
         raise HTTPException(status_code=500, detail=str(error)) from error
 
 
+@router.get("/tickets/statuses")
+def get_ticket_statuses():
+    return {
+        "statuses": TICKET_STATUSES,
+    }
+
+
+@router.get("/{email_id:int}/ticket")
+def get_email_ticket(email_id: int, db: Session = Depends(get_db)):
+    email_record = get_email_by_id_from_db(db, email_id)
+
+    if email_record is None:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    try:
+        ticket = get_ticket_by_email_id(db, email_id)
+    except SQLAlchemyError:
+        db.rollback()
+        ticket = None
+
+    return {
+        "email_id": email_id,
+        "ticket": ticket_to_dict(ticket) if ticket else None,
+    }
+
+
+@router.post("/{email_id:int}/ticket")
+def create_email_ticket(
+    email_id: int,
+    request: UpdateTicketRequest,
+    db: Session = Depends(get_db),
+):
+    require_permission(request.actor_role, "route_email")
+    email_record = get_email_by_id_from_db(db, email_id)
+
+    if email_record is None:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    try:
+        ticket = create_or_update_ticket_for_email(
+            db=db,
+            email_record=email_record,
+            created_by=request.actor_role,
+        )
+    except SQLAlchemyError as error:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Evrak/talep kaydı tablosu hazır değil. Lütfen veritabanı tablolarını güncelleyin.",
+        ) from error
+
+    return {
+        "email_id": email_id,
+        "ticket": ticket,
+    }
+
+
+@router.patch("/tickets/{ticket_id:int}")
+def update_email_ticket(
+    ticket_id: int,
+    request: UpdateTicketRequest,
+    db: Session = Depends(get_db),
+):
+    require_permission(request.actor_role, "route_email")
+
+    try:
+        ticket = update_ticket(
+            db=db,
+            ticket_id=ticket_id,
+            status=request.status,
+            responsible_person=request.responsible_person,
+            note=request.note,
+            response_text=request.response_text,
+            closure_reason=request.closure_reason,
+            actor=request.actor_role,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except SQLAlchemyError as error:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="Evrak/talep kaydı tablosu hazır değil. Lütfen veritabanı tablolarını güncelleyin.",
+        ) from error
+
+    if ticket is None:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    return {
+        "ticket": ticket,
+    }
+
+
 @router.post("/model/train")
 def train_model(
     request: TrainModelRequest,
@@ -539,6 +661,25 @@ def manual_email_import(
         "imported_email": created_email,
         "processing_result": processed_email,
     }
+
+
+@router.post("/ingestion/sync")
+def sync_mailbox(
+    request: MailboxSyncRequest,
+    db: Session = Depends(get_db),
+):
+    require_permission(request.actor_role, "import_email")
+
+    try:
+        return sync_synthetic_mailbox(
+            db=db,
+            source_mailbox=request.source_mailbox,
+            limit=request.limit,
+            process_after_import=request.process_after_import,
+        )
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=500, detail=str(error)) from error
+
 
 @router.post("/{email_id:int}/process")
 def process_email(
