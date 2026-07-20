@@ -14,6 +14,7 @@ BACKEND_DIR = Path(__file__).resolve().parents[2]
 MODEL_DIR = BACKEND_DIR / "model_artifacts"
 MODEL_PATH = MODEL_DIR / "email_classifier.joblib"
 TARGET_FIELDS = ["category", "department", "priority"]
+TOP_EVIDENCE_TERM_COUNT = 5
 
 
 class ModelDependencyError(RuntimeError):
@@ -121,6 +122,49 @@ def train_single_target_model(texts: list[str], labels: list[str], dependencies:
     return pipeline
 
 
+def extract_tfidf_evidence(model, text: str, top_count: int = TOP_EVIDENCE_TERM_COUNT) -> list[dict]:
+    vectorizer = model.named_steps["tfidf"]
+    classifier = model.named_steps["classifier"]
+    matrix = vectorizer.transform([text])
+    predicted_label = str(model.predict([text])[0])
+    feature_names = vectorizer.get_feature_names_out()
+
+    if matrix.nnz == 0:
+        return []
+
+    class_labels = [str(label) for label in classifier.classes_]
+    predicted_index = class_labels.index(predicted_label)
+
+    if len(class_labels) == 2 and classifier.coef_.shape[0] == 1:
+        coefficients = classifier.coef_[0]
+
+        if predicted_index == 0:
+            coefficients = -coefficients
+    else:
+        coefficients = classifier.coef_[predicted_index]
+
+    _, feature_indices = matrix.nonzero()
+    weighted_terms = []
+
+    for feature_index in feature_indices:
+        tfidf_weight = float(matrix[0, feature_index])
+        contribution = tfidf_weight * float(coefficients[feature_index])
+
+        if contribution <= 0:
+            continue
+
+        weighted_terms.append(
+            {
+                "term": feature_names[feature_index],
+                "weight": round(tfidf_weight, 3),
+                "contribution": round(contribution, 3),
+            }
+        )
+
+    weighted_terms.sort(key=lambda item: item["contribution"], reverse=True)
+    return weighted_terms[:top_count]
+
+
 def train_email_classifier(db: Session) -> dict:
     dependencies = import_ml_dependencies()
     examples = build_training_dataset(db)
@@ -212,6 +256,7 @@ def predict_email_with_trained_model(email: dict) -> dict:
         predictions[target] = {
             "label": label,
             "confidence_score": round(confidence_score, 2),
+            "evidence_terms": extract_tfidf_evidence(model, text),
         }
 
     return {
@@ -230,5 +275,6 @@ def predict_email_with_trained_model(email: dict) -> dict:
                 2,
             ),
             "target_confidences": predictions,
+            "evidence_terms": predictions["category"]["evidence_terms"],
         },
     }

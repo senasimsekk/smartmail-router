@@ -1732,26 +1732,41 @@ function App() {
                               Model henüz eğitilmedi veya tahmin üretmeye hazır değil.
                             </p>
                           ) : (
-                            <div className="analysis-grid">
-                              <Meta
-                                label="Model kategorisi"
-                                value={trainedModelPrediction.category}
-                              />
-                              <Meta
-                                label="Model birimi"
-                                value={trainedModelPrediction.department}
-                              />
-                              <Meta
-                                label="Model önceliği"
-                                value={trainedModelPrediction.priority}
-                              />
-                              <Meta
-                                label="Model güveni"
-                                value={formatPercent(
-                                  trainedModelPrediction.confidence_score
-                                )}
-                              />
-                            </div>
+                            <>
+                              <div className="analysis-grid">
+                                <Meta
+                                  label="Model kategorisi"
+                                  value={trainedModelPrediction.category}
+                                />
+                                <Meta
+                                  label="Model birimi"
+                                  value={trainedModelPrediction.department}
+                                />
+                                <Meta
+                                  label="Model önceliği"
+                                  value={trainedModelPrediction.priority}
+                                />
+                                <Meta
+                                  label="Model güveni"
+                                  value={formatPercent(
+                                    trainedModelPrediction.confidence_score
+                                  )}
+                                />
+                              </div>
+
+                              {trainedModelPrediction.evidence_terms?.length > 0 && (
+                                <div className="model-evidence">
+                                  <span>Model sinyalleri</span>
+                                  <div>
+                                    {trainedModelPrediction.evidence_terms.map(
+                                      (item) => (
+                                        <strong key={item.term}>{item.term}</strong>
+                                      )
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </>
                           )}
                         </section>
                       </>

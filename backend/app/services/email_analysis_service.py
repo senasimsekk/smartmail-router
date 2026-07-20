@@ -1,5 +1,8 @@
+import re
+
 from app.services.attachment_analysis_service import analyze_attachments
 from app.services.classification_service import normalize_text
+from app.services.information_extraction_service import extract_information_from_text
 from app.services.preprocessing_service import build_classification_text, clean_email_body
 from app.services.sla_service import calculate_sla
 
@@ -15,6 +18,122 @@ def shorten_text(text: str, max_length: int = 180) -> str:
     return text[:max_length].strip() + "..."
 
 
+def normalize_whitespace(text: str) -> str:
+    return " ".join((text or "").split())
+
+
+def lower_first_letter(text: str) -> str:
+    if not text:
+        return text
+
+    return text[0].lower() + text[1:]
+
+
+def remove_entity_label(text: str) -> str:
+    return re.sub(
+        r"^(?:başvuru|basvuru|karar)\s*(?:no|numarası|numarasi)?\s*[:\s-]+",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    ).strip()
+
+
+def join_limited_values(values: list[str], limit: int = 3) -> str:
+    cleaned_values = []
+
+    for value in values or []:
+        normalized_value = remove_entity_label(normalize_whitespace(str(value)))
+
+        if normalized_value and normalized_value not in cleaned_values:
+            cleaned_values.append(normalized_value)
+
+    if not cleaned_values:
+        return ""
+
+    visible_values = cleaned_values[:limit]
+    result = ", ".join(visible_values)
+    hidden_count = len(cleaned_values) - len(visible_values)
+
+    if hidden_count > 0:
+        result += f" ve {hidden_count} kayıt daha"
+
+    return result
+
+
+def get_sender_label(email: dict, extracted: dict) -> str:
+    return (
+        extracted.get("sender_institution")
+        or extracted.get("sender")
+        or extracted.get("sender_email")
+        or email.get("sender")
+        or "Gönderen"
+    )
+
+
+def detect_message_signal(email: dict) -> str:
+    body = normalize_whitespace(clean_email_body(email.get("body", "")))
+    normalized_body = normalize_text(body)
+
+    if email.get("has_attachment") and len(body) < 90:
+        return "Mail gövdesi sınırlı bilgi içeriyor; ek analizi karar için belirleyici olabilir."
+
+    if contains_any(normalized_body, ["ekte sunulmustur", "ekte yer almaktadir", "ekinde sunuyorum"]):
+        return "Gönderici asıl içeriğin eklerde yer aldığını belirtiyor."
+
+    if contains_any(normalized_body, ["acil", "ivedi", "sure dolmak", "son gun"]):
+        return "Metinde süre hassasiyeti veya ivedilik sinyali bulunuyor."
+
+    return ""
+
+
+def build_entity_sentence(extracted: dict) -> str:
+    entity_parts = []
+
+    if extracted.get("application_numbers"):
+        entity_parts.append(
+            f"başvuru numarası: {join_limited_values(extracted['application_numbers'])}"
+        )
+
+    if extracted.get("file_numbers"):
+        entity_parts.append(f"dosya numarası: {join_limited_values(extracted['file_numbers'])}")
+
+    if extracted.get("decision_numbers"):
+        entity_parts.append(
+            f"karar numarası: {join_limited_values(extracted['decision_numbers'])}"
+        )
+
+    if extracted.get("dates"):
+        entity_parts.append(f"tarih: {join_limited_values(extracted['dates'])}")
+
+    if extracted.get("related_legislation"):
+        entity_parts.append(
+            f"mevzuat: {join_limited_values(extracted['related_legislation'])}"
+        )
+
+    if extracted.get("complained_party"):
+        entity_parts.append(f"şikayet edilen taraf: {extracted['complained_party']}")
+
+    if extracted.get("money_amounts"):
+        entity_parts.append(f"tutar: {join_limited_values(extracted['money_amounts'])}")
+
+    if not entity_parts:
+        return ""
+
+    return f"Öne çıkan bilgiler: {'; '.join(entity_parts)}."
+
+
+def build_attachment_sentence(email: dict, extracted: dict) -> str:
+    attachment_names = extracted.get("attachment_names") or email.get("attachment_names") or []
+
+    if not email.get("has_attachment") and not attachment_names:
+        return "Ek bulunmuyor."
+
+    if attachment_names:
+        return f"Ekler: {join_limited_values(attachment_names)}."
+
+    return "Ek olduğu bildiriliyor ancak dosya adı sistemde yer almıyor."
+
+
 def generate_summary(email: dict, classification: dict) -> str:
     category = classification["category"]
     department = classification["department"]
@@ -22,81 +141,74 @@ def generate_summary(email: dict, classification: dict) -> str:
 
     cleaned_body = clean_email_body(email.get("body", ""))
     normalized_text = normalize_text(build_classification_text(email))
+    extracted = extract_information_from_text(email, classification)
+    sender_label = get_sender_label(email, extracted)
+    subject = normalize_whitespace(email.get("subject", ""))
+    requested_action = extracted.get("requested_action") or f"{category} değerlendirmesi"
+    entity_sentence = build_entity_sentence(extracted)
+    attachment_sentence = build_attachment_sentence(email, extracted)
+    message_signal = detect_message_signal(email)
+
+    summary_parts = [
+        (
+            f"{sender_label}, "
+            f"{subject or category} konulu e-postada "
+            f"{lower_first_letter(requested_action)} iletiyor."
+        ),
+    ]
+
+    if entity_sentence:
+        summary_parts.append(entity_sentence)
+
+    summary_parts.append(attachment_sentence)
+
+    if message_signal:
+        summary_parts.append(message_signal)
+
+    summary_parts.append(
+        f"Önerilen işlem: {department} tarafından {priority.lower()} öncelikle değerlendirilmesi."
+    )
+
+    contextual_summary = " ".join(summary_parts)
 
     if category == "KVKK Başvurusu":
-        return (
-            "Gönderen, KVKK kapsamında kişisel verileriyle ilgili bir talepte bulunuyor. "
-            f"Mailin {department} tarafından değerlendirilmesi öneriliyor."
-        )
+        return contextual_summary
 
     if category == "Teknik Destek":
-        return (
-            "Gönderen, sistem veya portal kullanımıyla ilgili teknik bir sorun bildiriyor. "
-            f"Talebin {department} tarafından incelenmesi öneriliyor."
-        )
+        return contextual_summary
 
     if category == "Basın Talebi":
-        return (
-            "Gönderen, kurumla ilgili basın, röportaj veya açıklama talebinde bulunuyor. "
-            f"Mailin {department} tarafından değerlendirilmesi öneriliyor."
-        )
+        return contextual_summary
 
     if category == "Satın Alma":
-        return (
-            "Gönderen, satın alma, teklif, ihale veya tedarik süreciyle ilgili bilgi talep ediyor. "
-            f"Mailin {department} birimine yönlendirilmesi öneriliyor."
-        )
+        return contextual_summary
 
     if category == "Hukuki Tebligat":
-        return (
-            "Mail hukuki tebligat, dava veya mahkeme süreciyle ilgili görünüyor. "
-            f"Öncelik {priority} olarak belirlenmiş ve insan onayı öneriliyor."
-        )
+        return contextual_summary
 
     if category == "Şikayet":
-        return (
-            "Gönderen, bir kişi, kurum veya hizmet hakkında şikayet başvurusunda bulunuyor. "
-            f"Mailin {department} tarafından incelenmesi öneriliyor."
-        )
+        return contextual_summary
 
     if category == "İhbar":
-        return (
-            "Gönderen, incelenmesi gereken bir ihbar veya bildirim iletiyor. "
-            f"Mailin {department} tarafından dikkatli şekilde değerlendirilmesi öneriliyor."
-        )
+        return contextual_summary
 
     if category == "Bilgi Edinme":
-        return (
-            "Gönderen, kurum kararı, süreç veya başvuru hakkında bilgi talep ediyor. "
-            f"Mailin {department} tarafından yanıtlanması öneriliyor."
-        )
+        return contextual_summary
 
     if category in ["Fatura / Ödeme", "Fatura/Ödeme"]:
-        return (
-            "Gönderen, ödeme, fatura veya mali işlemle ilgili bir talep iletiyor. "
-            f"Mailin {department} tarafından incelenmesi öneriliyor."
-        )
+        return contextual_summary
 
     if category == "İnsan Kaynakları":
-        return (
-            "Gönderen, insan kaynakları, staj, iş başvurusu veya personel süreciyle ilgili iletişim kuruyor. "
-            f"Mailin {department} tarafından değerlendirilmesi öneriliyor."
-        )
+        return contextual_summary
 
     if category == "Evrak Kayıt":
-        return (
-            "Mail resmi evrak veya kayıt sürecine alınması gereken bir başvuru gibi görünüyor. "
-            f"Mailin {department} birimine yönlendirilmesi öneriliyor."
-        )
+        return contextual_summary
 
     if contains_any(normalized_text, ["toplanti", "randevu", "gorusme"]):
-        return (
-            "Gönderen, kurumla görüşme veya toplantı talebinde bulunuyor. "
-            f"Mailin {department} tarafından değerlendirilmesi öneriliyor."
-        )
+        return contextual_summary
 
     return (
-        "Mail genel bir başvuru veya bilgi talebi içeriyor. "
+        f"{contextual_summary} "
         f"İçerik özeti: {shorten_text(cleaned_body)}"
     )
 

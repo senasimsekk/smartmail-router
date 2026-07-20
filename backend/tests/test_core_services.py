@@ -14,6 +14,7 @@ from app.services.attachment_analysis_service import (
 from app.services.classification_service import classify_email
 from app.services.dashboard_service import build_operational_report, calculate_rate
 from app.services.email_ingestion_service import normalize_attachment_names
+from app.services.email_analysis_service import generate_summary
 from app.services.email_processing_service import determine_processing_routing_decision
 from app.services.integration_service import (
     INTEGRATION_CATALOG,
@@ -22,6 +23,11 @@ from app.services.integration_service import (
 from app.services.preprocessing_service import preprocess_email
 from app.services.sla_service import calculate_sla
 from app.services.ticket_service import build_record_number, derive_ticket_status
+from app.services.trainable_model_service import (
+    extract_tfidf_evidence,
+    import_ml_dependencies,
+    train_single_target_model,
+)
 
 
 def make_email(**overrides):
@@ -69,6 +75,65 @@ class ClassificationServiceTests(unittest.TestCase):
         self.assertEqual(result["category"], "Teknik Destek")
         self.assertEqual(result["department"], "Bilgi İşlem")
         self.assertEqual(result["priority"], "Düşük")
+
+
+class TrainableModelServiceTests(unittest.TestCase):
+    def test_extracts_tfidf_evidence_terms_for_prediction(self):
+        dependencies = import_ml_dependencies()
+        model = train_single_target_model(
+            [
+                "kvkk kisisel veri silinmesi talebi",
+                "veri sorumlusu kisisel veri basvurusu",
+                "portal sifre giris hatasi",
+                "web sitesi baglanti sorunu",
+            ],
+            [
+                "KVKK Başvurusu",
+                "KVKK Başvurusu",
+                "Teknik Destek",
+                "Teknik Destek",
+            ],
+            dependencies,
+        )
+
+        evidence_terms = extract_tfidf_evidence(
+            model,
+            "kisisel verilerimin silinmesi icin kvkk basvurusu",
+        )
+
+        terms = {item["term"] for item in evidence_terms}
+
+        self.assertTrue(evidence_terms)
+        self.assertTrue({"kvkk", "kisisel"} & terms)
+
+
+class EmailAnalysisServiceTests(unittest.TestCase):
+    def test_generates_contextual_summary_with_entities_and_attachments(self):
+        email = make_email(
+            subject="KVKK başvuru sonucu talebi",
+            body=(
+                "6698 sayılı Kanun kapsamında kişisel verilerimin silinmesini talep ediyorum. "
+                "Başvuru numarası: RK-2026-184. Tarih: 16/07/2026. "
+                "Dilekçe ekte sunulmuştur."
+            ),
+            has_attachment=True,
+            attachment_names=["kvkk-dilekce.pdf"],
+        )
+        classification = {
+            "category": "KVKK Başvurusu",
+            "department": "Hukuk Müşavirliği",
+            "priority": "Yüksek",
+            "requires_human_review": True,
+            "confidence_score": 0.91,
+        }
+
+        summary = generate_summary(email, classification)
+
+        self.assertIn("Kişisel verilerin silinmesi talebi", summary)
+        self.assertIn("başvuru numarası", summary)
+        self.assertIn("16/07/2026", summary)
+        self.assertIn("kvkk-dilekce.pdf", summary)
+        self.assertIn("Hukuk Müşavirliği", summary)
 
 
 class SlaServiceTests(unittest.TestCase):
