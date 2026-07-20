@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime
+from types import SimpleNamespace
 
 from app.services.authorization_service import (
     get_available_roles,
@@ -11,8 +12,14 @@ from app.services.attachment_analysis_service import (
     extract_attachment_entities,
 )
 from app.services.classification_service import classify_email
+from app.services.dashboard_service import build_operational_report, calculate_rate
 from app.services.email_ingestion_service import normalize_attachment_names
 from app.services.email_processing_service import determine_processing_routing_decision
+from app.services.integration_service import (
+    INTEGRATION_CATALOG,
+    build_integration_status,
+)
+from app.services.preprocessing_service import preprocess_email
 from app.services.sla_service import calculate_sla
 from app.services.ticket_service import build_record_number, derive_ticket_status
 
@@ -162,6 +169,94 @@ class EmailProcessingServiceTests(unittest.TestCase):
         self.assertFalse(decision["auto_route"])
 
 
+class DashboardReportServiceTests(unittest.TestCase):
+    def test_calculates_rate_safely(self):
+        self.assertEqual(calculate_rate(2, 4), 0.5)
+        self.assertEqual(calculate_rate(2, 0), 0)
+
+    def test_builds_management_report_metrics(self):
+        emails = [
+            make_email(
+                id=1,
+                subject="KVKK başvurusu",
+                body="Kişisel verilerimin silinmesini talep ediyorum.",
+                routing_status="Pending Review",
+                expected_category="KVKK Başvurusu",
+                expected_department="Hukuk Müşavirliği",
+                expected_priority="Yüksek",
+            ),
+            make_email(
+                id=2,
+                subject="Portal giriş hatası",
+                body="Portal girişinde teknik hata alıyorum.",
+                routing_status="Routed",
+                approved_by="system",
+                approved_at="2026-07-15T09:00:42",
+                expected_category="Teknik Destek",
+                expected_department="Bilgi İşlem",
+                expected_priority="Düşük",
+            ),
+            make_email(
+                id=3,
+                subject="Otomatik cevap",
+                body="Bu otomatik cevap mesajıdır.",
+                routing_status="Corrected",
+            ),
+        ]
+        logs = [
+            {
+                "email_id": 3,
+                "action_type": "ROUTING_CORRECTED",
+                "actor": "operator",
+                "created_at": "2026-07-15T09:01:00",
+                "extra_data": {},
+            }
+        ]
+
+        report = build_operational_report(emails, logs)
+
+        self.assertEqual(report["kpis"]["total_emails"], 3)
+        self.assertEqual(report["kpis"]["auto_routed_count"], 1)
+        self.assertEqual(report["kpis"]["pending_review_count"], 1)
+        self.assertEqual(report["kpis"]["wrong_routing_count"], 1)
+        self.assertEqual(report["kpis"]["operator_intervention_rate"], 0.33)
+        self.assertGreaterEqual(report["kpis"]["spam_or_automatic_count"], 1)
+        self.assertEqual(report["mailbox_performance"][0]["total"], 3)
+
+
+class IntegrationServiceTests(unittest.TestCase):
+    def test_builds_exchange_integration_status_from_latest_mailbox_log(self):
+        log = SimpleNamespace(
+            action_type="MAILBOX_SYNCED",
+            created_at=datetime(2026, 7, 16, 14, 30, 0),
+        )
+        exchange = next(
+            integration
+            for integration in INTEGRATION_CATALOG
+            if integration["id"] == "exchange_outlook"
+        )
+
+        status = build_integration_status(exchange, 2, 20, 4, [log])
+
+        self.assertEqual(status["name"], "Exchange / Outlook")
+        self.assertEqual(status["status"], "Hazır")
+        self.assertEqual(status["records_touched"], 20)
+        self.assertEqual(status["last_sync_at"], "2026-07-16T14:30:00")
+        self.assertIn("Ortak posta kutusu okuma", status["capabilities"])
+
+    def test_marks_object_storage_as_planned(self):
+        object_storage = next(
+            integration
+            for integration in INTEGRATION_CATALOG
+            if integration["id"] == "object_storage"
+        )
+
+        status = build_integration_status(object_storage, 9, 20, 4, [])
+
+        self.assertEqual(status["status"], "Planlandı")
+        self.assertLessEqual(status["health_score"], 72)
+
+
 class EmailIngestionServiceTests(unittest.TestCase):
     def test_normalizes_attachment_names(self):
         attachment_names = normalize_attachment_names(
@@ -172,6 +267,43 @@ class EmailIngestionServiceTests(unittest.TestCase):
 
     def test_normalizes_empty_attachment_names(self):
         self.assertEqual(normalize_attachment_names(None), [])
+
+
+class PreprocessingServiceTests(unittest.TestCase):
+    def test_splits_main_message_signature_footer_and_reply_chain(self):
+        email = make_email(
+            subject="Re: Başvuru",
+            sender="ahmet.yilmaz@example.com",
+            body=(
+                "<p>Merhaba,</p><p>Ekte basvuru.pdf yer almaktadır.</p>"
+                "<br>İyi çalışmalar,<br>Ahmet Yılmaz<br>"
+                "Bu e-posta ve ekleri gizlidir.<br>"
+                "Kimden: onceki@example.com<br>Konu: Eski cevap<br>Eski mesaj"
+            ),
+            attachment_names=["kimlik.png"],
+        )
+
+        result = preprocess_email(email)
+
+        self.assertIn("Ekte basvuru.pdf", result["main_message"])
+        self.assertIn("Ahmet Yılmaz", result["signature"])
+        self.assertIn("Bu e-posta", result["footer"])
+        self.assertEqual(result["language"], "Türkçe")
+        self.assertIn("basvuru.pdf", result["attachments"]["detected_in_body"])
+        self.assertIn("kimlik.png", result["attachments"]["all_names"])
+        self.assertGreaterEqual(len(result["previous_replies"]), 1)
+
+    def test_detects_automatic_reply_and_fixes_broken_characters(self):
+        email = make_email(
+            subject="Otomatik cevap",
+            sender="no-reply@example.com",
+            body="Merhaba, Ä°lgili kiÅŸi ofis dışında.",
+        )
+
+        result = preprocess_email(email)
+
+        self.assertIn("İlgili kişi", result["plain_text"])
+        self.assertTrue(result["spam_or_automatic"]["is_automatic_reply"])
 
 
 class AttachmentAnalysisServiceTests(unittest.TestCase):

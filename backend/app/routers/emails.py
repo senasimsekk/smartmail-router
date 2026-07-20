@@ -18,7 +18,14 @@ from app.services.information_extraction_service import extract_structured_infor
 from app.services.evaluation_service import evaluate_classification
 from app.services.preprocessing_service import preprocess_email
 from app.services.email_processing_service import process_email_by_id
-from app.services.dashboard_service import get_operational_dashboard_summary
+from app.services.dashboard_service import (
+    get_operational_dashboard_summary,
+    get_operational_report,
+)
+from app.services.integration_service import (
+    build_integration_overview,
+    test_integration_connection,
+)
 from app.services.attachment_text_extraction_service import (
     save_attachment_and_extract_text,
 )
@@ -118,6 +125,10 @@ class RouteEmailRequest(BaseModel):
 
 
 class TrainModelRequest(BaseModel):
+    actor_role: str = "operator"
+
+
+class IntegrationTestRequest(BaseModel):
     actor_role: str = "operator"
 
 
@@ -756,6 +767,33 @@ def get_operational_dashboard(
 ):
     return get_operational_dashboard_summary(db)
 
+
+@router.get("/reports/management")
+def get_management_report(db: Session = Depends(get_db)):
+    return get_operational_report(db)
+
+
+@router.get("/integrations/overview")
+def get_integration_overview(db: Session = Depends(get_db)):
+    return build_integration_overview(db)
+
+
+@router.post("/integrations/{integration_id}/test")
+def test_integration(
+    integration_id: str,
+    payload: IntegrationTestRequest,
+    db: Session = Depends(get_db),
+):
+    try:
+        return test_integration_connection(
+            db,
+            integration_id=integration_id,
+            actor_role=payload.actor_role,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+
 @router.get("/{email_id:int}")
 def get_email_by_id(email_id: int, db: Session = Depends(get_db)):
     email_record = get_email_by_id_from_db(db, email_id)
@@ -772,8 +810,8 @@ def preprocess_email_by_id(email_id: int, db: Session = Depends(get_db)):
 
     if email_record is None:
         raise HTTPException(status_code=404, detail="Email not found")
-    email=email_to_dict(email_record)
-    preprocessing_result = preprocess_email(email_to_dict(email))
+    email = email_to_dict(email_record)
+    preprocessing_result = preprocess_email(email)
 
     return {
                 "email_id": email["id"],

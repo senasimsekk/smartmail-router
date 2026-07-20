@@ -60,6 +60,7 @@ const ROLE_OPTIONS = [
       "approve_routing",
       "route_email",
       "correct_routing",
+      "view_dashboard",
       "view_training_data",
     ],
   },
@@ -74,6 +75,7 @@ const ROLE_OPTIONS = [
       "approve_routing",
       "route_email",
       "correct_routing",
+      "view_dashboard",
       "view_training_data",
     ],
   },
@@ -81,13 +83,13 @@ const ROLE_OPTIONS = [
     role: "department_user",
     label: "Birim Kullanıcısı",
     department: "İlgili Uzman Daire",
-    permissions: ["view_training_data"],
+    permissions: ["view_dashboard", "view_training_data"],
   },
   {
     role: "viewer",
     label: "İzleyici",
     department: "Raporlama",
-    permissions: [],
+    permissions: ["view_dashboard"],
   },
 ];
 
@@ -110,10 +112,19 @@ const STATUS_FILTERS = [
 
 const DETAIL_TABS = [
   { value: "analysis", label: "Analiz" },
+  { value: "preprocess", label: "Ön İşleme" },
   { value: "attachments", label: "Ekler" },
   { value: "routing", label: "Yönlendirme" },
   { value: "ticket", label: "Evrak Kaydı" },
   { value: "logs", label: "Günlük" },
+];
+
+const PAGE_TABS = [
+  { value: "operation", label: "Operasyon" },
+  { value: "reports", label: "Raporlama" },
+  { value: "integrations", label: "Entegrasyonlar" },
+  { value: "ingestion", label: "E-posta Alma" },
+  { value: "training", label: "Model Eğitimi" },
 ];
 
 const STATUS_LABELS = {
@@ -144,6 +155,7 @@ const LOG_ACTION_LABELS = {
   MODEL_TRAINED: "Model eğitildi",
   TICKET_CREATED: "Evrak/talep kaydı oluşturuldu",
   TICKET_UPDATED: "Evrak/talep kaydı güncellendi",
+  INTEGRATION_TESTED: "Entegrasyon testi çalıştırıldı",
 };
 
 const LOG_DETAIL_LABELS = {
@@ -201,6 +213,28 @@ function formatPercent(value) {
   }
 
   return `${Math.round(value * 100)}%`;
+}
+
+function formatSeconds(value) {
+  if (typeof value !== "number") {
+    return "Veri yok";
+  }
+
+  if (value < 60) {
+    return `${Math.round(value)} sn`;
+  }
+
+  if (value >= 3600) {
+    const hours = Math.floor(value / 3600);
+    const minutes = Math.round((value % 3600) / 60);
+
+    return `${hours} sa ${minutes} dk`;
+  }
+
+  const minutes = Math.floor(value / 60);
+  const seconds = Math.round(value % 60);
+
+  return `${minutes} dk ${seconds} sn`;
 }
 
 function formatDate(value) {
@@ -457,6 +491,8 @@ function App() {
   const [details, setDetails] = useState(null);
   const [dashboard, setDashboard] = useState(null);
   const [operationalDashboard, setOperationalDashboard] = useState(null);
+  const [managementReport, setManagementReport] = useState(null);
+  const [integrationOverview, setIntegrationOverview] = useState(null);
   const [pendingReview, setPendingReview] = useState([]);
   const [feedbackData, setFeedbackData] = useState({
     feedback_count: 0,
@@ -484,6 +520,7 @@ function App() {
   const [errorMessage, setErrorMessage] = useState("");
   const [actionMessage, setActionMessage] = useState("");
   const [activeRole, setActiveRole] = useState("operator");
+  const [activePage, setActivePage] = useState("operation");
   const [slaFilter, setSlaFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [queueSearch, setQueueSearch] = useState("");
@@ -549,6 +586,8 @@ function App() {
         emailData,
         dashboardData,
         operationalData,
+        reportData,
+        integrationData,
         pendingData,
         feedbackResult,
         trainingResult,
@@ -557,6 +596,8 @@ function App() {
           request("/emails"),
           request("/emails/dashboard/summary"),
           request("/emails/dashboard/operational"),
+          request("/emails/reports/management"),
+          request("/emails/integrations/overview"),
           request("/emails/review/pending"),
           request("/emails/feedback/all"),
           request("/emails/feedback/training-data"),
@@ -565,6 +606,8 @@ function App() {
       setEmails(emailData.emails || []);
       setDashboard(dashboardData);
       setOperationalDashboard(operationalData);
+      setManagementReport(reportData);
+      setIntegrationOverview(integrationData);
       setPendingReview(pendingData.pending_emails || []);
       setFeedbackData(feedbackResult);
       setTrainingData(trainingResult);
@@ -595,9 +638,10 @@ function App() {
     setActionMessage("");
 
     try {
-      const [analysis, aiAnalysis, responseSuggestion, logData] =
+      const [analysis, preprocessing, aiAnalysis, responseSuggestion, logData] =
         await Promise.all([
           request(`/emails/${emailId}/analysis`),
+          request(`/emails/${emailId}/preprocess`),
           request(`/emails/${emailId}/ai-analysis`),
           request(`/emails/${emailId}/response-suggestion`),
           request(`/emails/${emailId}/logs`),
@@ -621,6 +665,7 @@ function App() {
 
       setDetails({
         analysis,
+        preprocessing,
         aiAnalysis,
         responseSuggestion,
         modelPrediction,
@@ -976,6 +1021,32 @@ function App() {
     }
   }
 
+  async function handleIntegrationTest(integrationId) {
+    setActionMessage("");
+    setErrorMessage("");
+
+    if (!can("view_dashboard")) {
+      setActionMessage("Bu rol entegrasyon testi çalıştıramaz.");
+      return;
+    }
+
+    try {
+      const result = await request(`/emails/integrations/${integrationId}/test`, {
+        method: "POST",
+        body: JSON.stringify({
+          actor_role: activeRole,
+        }),
+      });
+
+      setActionMessage(
+        `${result.connection_test.name} bağlantı testi: ${result.connection_test.status}.`
+      );
+      await refreshWorkspace();
+    } catch (error) {
+      setErrorMessage(error.message);
+    }
+  }
+
   async function handleCreateTicket() {
     if (!selectedEmail) {
       return;
@@ -1020,6 +1091,7 @@ function App() {
 
   const classification = details?.analysis?.classification || {};
   const analysis = details?.analysis?.analysis || {};
+  const preprocessing = details?.preprocessing?.preprocessing || {};
   const sla = analysis?.sla || {};
   const extracted = details?.analysis?.extracted_information || {};
   const attachmentAnalysis = analysis?.attachment_analysis || {};
@@ -1032,6 +1104,8 @@ function App() {
     details?.modelPrediction?.model_prediction?.prediction || {};
   const ruleBasedClassification = aiAnalysis.rule_based_classification || {};
   const mockAiClassification = aiAnalysis.mock_ai_classification || {};
+  const reportKpis = managementReport?.kpis || {};
+  const integrationSummary = integrationOverview?.summary || {};
   const workflowGraph = buildWorkflowGraph(
     selectedEmail,
     classification,
@@ -1076,52 +1150,297 @@ function App() {
       {errorMessage && <div className="alert danger">{errorMessage}</div>}
       {actionMessage && <div className="alert success">{actionMessage}</div>}
 
-      <section className="overview-section" aria-label="Operasyon özeti">
-        <div className="metrics-grid" aria-label="Panel metrikleri">
-          <Metric label="Toplam e-posta" value={dashboard?.total_emails ?? 0} />
-          <Metric
-            label="İnsan onayı"
-            value={dashboard?.human_review_count ?? 0}
+      <nav className="page-tabs" aria-label="Ana modüller">
+        {PAGE_TABS.map((page) => (
+          <button
+            key={page.value}
+            className={activePage === page.value ? "active" : ""}
+            data-page={page.value}
+            type="button"
+            onClick={() => setActivePage(page.value)}
+          >
+            {page.label}
+          </button>
+        ))}
+      </nav>
+
+      {activePage === "operation" && (
+        <section className="overview-section" aria-label="Operasyon özeti">
+          <div className="metrics-grid" aria-label="Panel metrikleri">
+            <Metric label="Toplam e-posta" value={dashboard?.total_emails ?? 0} />
+            <Metric
+              label="İnsan onayı"
+              value={dashboard?.human_review_count ?? 0}
+              tone="warning"
+            />
+            <Metric
+              label="Kritik risk"
+              value={dashboard?.critical_risk_count ?? 0}
+              tone="danger"
+            />
+            <Metric
+              label="Doğruluk"
+              value={formatPercent(dashboard?.accuracy)}
+              tone="success"
+            />
+            <Metric
+              label="Bekleyen"
+              value={operationalDashboard?.pending_review_count ?? 0}
+              tone="warning"
+            />
+            <Metric
+              label="Süre yaklaşan"
+              value={dashboard?.sla_due_soon_count ?? 0}
+              tone="warning"
+            />
+            <Metric
+              label="Süre geciken"
+              value={dashboard?.sla_overdue_count ?? 0}
+              tone="danger"
+            />
+            <Metric
+              label="Yönlendirilen"
+              value={operationalDashboard?.routing_status_distribution?.Routed ?? 0}
+              tone="success"
+            />
+            <Metric
+              label="Geri bildirim"
+              value={feedbackData.feedback_count ?? 0}
+            />
+          </div>
+        </section>
+      )}
+
+      {activePage === "reports" && (
+        <section className="reporting-section" aria-label="Yönetim raporlama">
+        <div className="panel-heading compact-heading">
+          <div>
+            <p className="eyebrow">Raporlama Modülü</p>
+            <h2>Yönetim Raporlama</h2>
+          </div>
+          <span>{formatDate(managementReport?.generated_at)}</span>
+        </div>
+
+        <div className="report-kpi-grid">
+          <ReportMetric
+            label="Bugün gelen mail"
+            value={reportKpis.today_email_count ?? 0}
+          />
+          <ReportMetric
+            label="Otomatik sınıflandırılan"
+            value={reportKpis.classified_count ?? 0}
+          />
+          <ReportMetric
+            label="Operatör onayına düşen"
+            value={reportKpis.pending_review_count ?? 0}
             tone="warning"
           />
-          <Metric
-            label="Kritik risk"
-            value={dashboard?.critical_risk_count ?? 0}
+          <ReportMetric
+            label="Kritik işaretlenen"
+            value={reportKpis.critical_risk_count ?? 0}
             tone="danger"
           />
-          <Metric
-            label="Doğruluk"
-            value={formatPercent(dashboard?.accuracy)}
-            tone="success"
-          />
-          <Metric
-            label="Bekleyen"
-            value={operationalDashboard?.pending_review_count ?? 0}
-            tone="warning"
-          />
-          <Metric
-            label="Süre yaklaşan"
-            value={dashboard?.sla_due_soon_count ?? 0}
-            tone="warning"
-          />
-          <Metric
-            label="Süre geciken"
-            value={dashboard?.sla_overdue_count ?? 0}
+          <ReportMetric
+            label="Hatalı yönlendirme"
+            value={reportKpis.wrong_routing_count ?? 0}
             tone="danger"
           />
-          <Metric
-            label="Yönlendirilen"
-            value={operationalDashboard?.routing_status_distribution?.Routed ?? 0}
+          <ReportMetric
+            label="Ortalama yönlendirme"
+            value={formatSeconds(reportKpis.average_routing_seconds)}
             tone="success"
           />
-          <Metric
-            label="Geri bildirim"
-            value={feedbackData.feedback_count ?? 0}
+          <ReportMetric
+            label="AI doğruluk oranı"
+            value={formatPercent(reportKpis.ai_accuracy_rate)}
+            tone="success"
+          />
+          <ReportMetric
+            label="Operatör müdahalesi"
+            value={formatPercent(reportKpis.operator_intervention_rate)}
+            tone="warning"
+          />
+          <ReportMetric
+            label="SLA aşımı"
+            value={reportKpis.sla_overdue_count ?? 0}
+            tone="danger"
+          />
+          <ReportMetric
+            label="Spam / otomatik"
+            value={reportKpis.spam_or_automatic_count ?? 0}
           />
         </div>
-      </section>
 
-      <main className="workspace-grid">
+        <div className="report-grid">
+          <div className="report-card">
+            <h3>Bekleyen İşler</h3>
+            {managementReport?.action_items?.length > 0 ? (
+              managementReport.action_items.map((item) => (
+                <div className={`action-item ${item.tone}`} key={item.label}>
+                  <strong>{item.count}</strong>
+                  <div>
+                    <span>{item.label}</span>
+                    <p>{item.recommendation}</p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="muted">Aksiyon gerektiren kayıt yok.</p>
+            )}
+          </div>
+
+          <div className="report-card">
+            <h3>Günlük Gelen Mail</h3>
+            <ReportBars entries={managementReport?.daily_volume} labelKey="date" />
+          </div>
+
+          <div className="report-card">
+            <h3>Birim Bazlı İş Yükü</h3>
+            <DistributionList
+              title="Birim"
+              distribution={managementReport?.department_workload}
+            />
+          </div>
+
+          <div className="report-card">
+            <h3>Konu Bazlı Dağılım</h3>
+            <DistributionList
+              title="Talep türü"
+              distribution={managementReport?.category_distribution}
+            />
+          </div>
+        </div>
+
+        <div className="mailbox-report">
+          <div className="panel-heading compact-heading">
+            <h3>Posta Kutusu Performansı</h3>
+            <span>Ortak kutu ve birim kutusu bazlı görünüm</span>
+          </div>
+          <div className="mailbox-report-table">
+            <span>Kutu</span>
+            <span>Toplam</span>
+            <span>Otomatik</span>
+            <span>Onay</span>
+            <span>SLA aşımı</span>
+            <span>Kritik</span>
+            {(managementReport?.mailbox_performance || []).map((row) => (
+              <div className="mailbox-report-row" key={row.mailbox}>
+                <strong>{row.mailbox}</strong>
+                <span>{row.total}</span>
+                <span>{row.auto_routed}</span>
+                <span>{row.pending_review}</span>
+                <span>{row.overdue}</span>
+                <span>{row.critical}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+        </section>
+      )}
+
+      {activePage === "integrations" && (
+        <section className="integrations-page page-panel" aria-label="Entegrasyonlar">
+          <div className="panel-heading compact-heading">
+            <div>
+              <p className="eyebrow">Entegrasyon Modülü</p>
+              <h2>Kurumsal Sistem Bağlantıları</h2>
+            </div>
+            <span>{formatDate(integrationOverview?.generated_at)}</span>
+          </div>
+
+          <div className="integration-summary-grid">
+            <ReportMetric
+              label="Toplam entegrasyon"
+              value={integrationSummary.total_integrations ?? 0}
+            />
+            <ReportMetric
+              label="Hazır bağlantı"
+              value={integrationSummary.ready_count ?? 0}
+              tone="success"
+            />
+            <ReportMetric
+              label="Uyarı"
+              value={integrationSummary.warning_count ?? 0}
+              tone="warning"
+            />
+            <ReportMetric
+              label="Planlanan"
+              value={integrationSummary.planned_count ?? 0}
+            />
+            <ReportMetric
+              label="Sentetik çalışan"
+              value={integrationSummary.simulated_count ?? 0}
+            />
+            <ReportMetric
+              label="Ortalama sağlık"
+              value={formatPercent((integrationSummary.average_health ?? 0) / 100)}
+              tone="success"
+            />
+          </div>
+
+          <div className="integration-layout">
+            <div className="integration-inventory">
+              <div className="panel-heading compact-heading">
+                <h3>Entegrasyon Envanteri</h3>
+                <span>Sentetik bağlantı durumları</span>
+              </div>
+              <div className="integration-card-grid">
+                {(integrationOverview?.integrations || []).map((integration) => (
+                  <IntegrationCard
+                    integration={integration}
+                    key={integration.id}
+                    onTest={handleIntegrationTest}
+                    testDisabled={!can("view_dashboard")}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <aside className="integration-side-panel">
+              <div className="compact-section">
+                <h3>Sentetik Dizin</h3>
+                {(integrationOverview?.directory_units || []).map((unit) => (
+                  <div className="directory-row" key={unit.unit}>
+                    <strong>{unit.unit}</strong>
+                    <span>{unit.mailbox}</span>
+                    <p>
+                      {unit.synthetic_users} kullanıcı · {unit.routing_role}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="compact-section">
+                <h3>Veri Akışları</h3>
+                {(integrationOverview?.data_flows || []).map((flow) => (
+                  <div className="flow-row" key={`${flow.source}-${flow.target}`}>
+                    <div>
+                      <strong>{flow.source}</strong>
+                      <span>{flow.target}</span>
+                    </div>
+                    <p>{flow.payload}</p>
+                    <em>{flow.status}</em>
+                  </div>
+                ))}
+              </div>
+
+              <div className="compact-section">
+                <h3>Güvenlik Kontrolleri</h3>
+                {(integrationOverview?.security_controls || []).map((control) => (
+                  <div className="security-row" key={control.name}>
+                    <strong>{control.name}</strong>
+                    <span>{control.status}</span>
+                    <p>{control.coverage}</p>
+                  </div>
+                ))}
+              </div>
+            </aside>
+          </div>
+        </section>
+      )}
+
+      {activePage === "operation" && (
+        <main className="workspace-grid">
         <aside className="queue-panel">
           <div className="panel-heading">
             <h2>Gelen E-postalar</h2>
@@ -1436,6 +1755,87 @@ function App() {
                           )}
                         </section>
                       </>
+                    )}
+
+                    {activeDetailTab === "preprocess" && (
+                      <section className="section-block first-section">
+                        <div className="panel-heading">
+                          <h3>Ön İşleme Sonucu</h3>
+                          <span>{preprocessing.language || "Dil belirlenmedi"}</span>
+                        </div>
+
+                        <div className="analysis-grid">
+                          <Meta label="Gönderen" value={preprocessing.sender?.parsed} />
+                          <Meta
+                            label="Alıcı"
+                            value={preprocessing.recipients?.join(", ") || "-"}
+                          />
+                          <Meta
+                            label="Tarih"
+                            value={preprocessing.date || formatDate(selectedEmail.created_at)}
+                          />
+                          <Meta
+                            label="Otomatik cevap"
+                            value={
+                              preprocessing.spam_or_automatic?.is_automatic_reply
+                                ? "Evet"
+                                : "Hayır"
+                            }
+                          />
+                          <Meta
+                            label="Spam benzeri"
+                            value={
+                              preprocessing.spam_or_automatic?.is_spam_like
+                                ? "Evet"
+                                : "Hayır"
+                            }
+                          />
+                          <Meta
+                            label="Ek listesi"
+                            value={
+                              preprocessing.attachments?.all_names?.join(", ") || "Yok"
+                            }
+                          />
+                        </div>
+
+                        <div className="preprocess-grid">
+                          <TextBlock
+                            title="Asıl Mesaj"
+                            text={preprocessing.main_message}
+                          />
+                          <TextBlock
+                            title="İmza"
+                            text={preprocessing.signature || "İmza bulunmadı."}
+                          />
+                          <TextBlock
+                            title="Footer"
+                            text={preprocessing.footer || "Footer bulunmadı."}
+                          />
+                          <TextBlock
+                            title="Sınıflandırmaya Giden Metin"
+                            text={preprocessing.classification_text}
+                          />
+                        </div>
+
+                        <div className="preprocess-chain">
+                          <h4>Önceki Yazışmalar</h4>
+                          {preprocessing.previous_replies?.length > 0 ? (
+                            preprocessing.previous_replies.map((reply, index) => (
+                              <div className="reply-block" key={`${index}-${reply.slice(0, 20)}`}>
+                                <strong>{index + 1}. cevap bloğu</strong>
+                                <p>{reply}</p>
+                              </div>
+                            ))
+                          ) : (
+                            <p className="empty-log">Önceki yazışma bulunmadı.</p>
+                          )}
+                        </div>
+
+                        <ListBlock
+                          title="Uygulanan İşlemler"
+                          items={preprocessing.steps}
+                        />
+                      </section>
                     )}
 
                     {activeDetailTab === "attachments" && (
@@ -1804,8 +2204,11 @@ function App() {
             </>
           )}
         </section>
+      </main>
+      )}
 
-        <aside className="import-panel">
+      {activePage === "ingestion" && (
+        <section className="import-panel page-panel">
           <div className="ingestion-header">
             <div>
               <h2>E-posta Alma</h2>
@@ -1924,8 +2327,12 @@ function App() {
               distribution={dashboard?.risk_level_distribution}
             />
           </div>
+        </section>
+      )}
 
-          <div className="compact-section">
+      {activePage === "training" && (
+        <section className="training-page page-panel">
+          <div className="compact-section training-section">
             <div className="panel-heading compact-heading">
               <h3>Eğitim Verisi</h3>
               <div className="button-row">
@@ -1992,8 +2399,8 @@ function App() {
               <p className="muted">Eğitim verisi indirilmeye hazır.</p>
             )}
           </div>
-        </aside>
-      </main>
+        </section>
+      )}
     </div>
   );
 }
@@ -2004,6 +2411,60 @@ function Metric({ label, value, tone = "neutral" }) {
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
+  );
+}
+
+function ReportMetric({ label, value, tone = "neutral" }) {
+  return (
+    <div className={`report-metric ${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function IntegrationCard({ integration, onTest, testDisabled }) {
+  const statusTone =
+    integration.status === "Hazır"
+      ? "success"
+      : integration.status === "Uyarı"
+        ? "warning"
+        : "neutral";
+
+  return (
+    <article className={`integration-card ${statusTone}`}>
+      <div className="integration-card-header">
+        <div>
+          <span>{integration.group}</span>
+          <h4>{integration.name}</h4>
+        </div>
+        <strong>{integration.status}</strong>
+      </div>
+      <div className="integration-meta-grid">
+        <Meta label="Yön" value={integration.direction} />
+        <Meta label="Mod" value={integration.mode} />
+        <Meta label="Sahip" value={integration.owner} />
+        <Meta label="Sağlık" value={`${integration.health_score}%`} />
+      </div>
+      <p className="integration-contract">{integration.data_contract}</p>
+      <div className="integration-capabilities">
+        {integration.capabilities?.slice(0, 3).map((capability) => (
+          <span key={capability}>{capability}</span>
+        ))}
+      </div>
+      <div className="integration-footer">
+        <span>{integration.endpoint_hint}</span>
+        <button
+          className="secondary-button small-button"
+          disabled={testDisabled}
+          type="button"
+          onClick={() => onTest(integration.id)}
+        >
+          Bağlantıyı Test Et
+        </button>
+      </div>
+      <p className="integration-next-step">{integration.next_step}</p>
+    </article>
   );
 }
 
@@ -2038,6 +2499,38 @@ function ListBlock({ title, items = [] }) {
           <li key={item}>{item}</li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function ReportBars({ entries = [], labelKey }) {
+  if (!entries.length) {
+    return <p className="muted">Raporlanacak veri yok.</p>;
+  }
+
+  const maxTotal = Math.max(...entries.map((entry) => entry.total || 0), 1);
+
+  return (
+    <div className="report-bars">
+      {entries.map((entry) => (
+        <div className="report-bar-row" key={entry[labelKey]}>
+          <div className="distribution-label">
+            <span>{entry[labelKey]}</span>
+            <strong>{entry.total}</strong>
+          </div>
+          <div className="distribution-track" aria-hidden="true">
+            <div
+              className="distribution-fill"
+              style={{ width: `${Math.max((entry.total / maxTotal) * 100, 4)}%` }}
+            />
+          </div>
+          <div className="report-bar-meta">
+            <span>Kritik: {entry.critical}</span>
+            <span>Onay: {entry.pending_review}</span>
+            <span>Yönlendirilen: {entry.routed}</span>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
