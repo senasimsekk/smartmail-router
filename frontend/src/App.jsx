@@ -208,6 +208,29 @@ const WORKFLOW_STEP_POSITIONS = [
   { id: "closed", x: 1470, y: 80 },
 ];
 
+const INTEGRATION_ROADMAP_STEPS = [
+  {
+    label: "Posta Kutusu",
+    title: "webmaster@rekabet.gov.tr",
+    detail: "Exchange, Outlook veya IMAP üzerinden ortak kutu",
+  },
+  {
+    label: "Analiz Katmanı",
+    title: "Ön İşleme ve Ek Analizi",
+    detail: "Gövde, ek metni, OCR çıktısı ve güvenlik uyarıları",
+  },
+  {
+    label: "Kurumsal Kayıt",
+    title: "EBYS / Evrak Kaydı",
+    detail: "Kayıt numarası, başvuru türü, birim ve SLA",
+  },
+  {
+    label: "Dış Sistemler",
+    title: "SIEM, DMS, Bildirim",
+    detail: "Denetim izi, dosya arşivi ve birim bilgilendirmesi",
+  },
+];
+
 function formatPercent(value) {
   if (typeof value !== "number") {
     return "-";
@@ -1114,6 +1137,26 @@ function App() {
   const reportKpis = managementReport?.kpis || {};
   const evaluationSummary = evaluationReport?.summary || {};
   const integrationSummary = integrationOverview?.summary || {};
+  const integrations = integrationOverview?.integrations || [];
+  const priorityIntegrationIds = [
+    "exchange_outlook",
+    "ebys",
+    "antivirus",
+    "object_storage",
+    "siem",
+    "webhook_api",
+  ];
+  const priorityIntegrations = integrations.filter((integration) =>
+    priorityIntegrationIds.includes(integration.id)
+  );
+  const identityIntegrations = integrations.filter(
+    (integration) => integration.group === "Kimlik ve Yetki"
+  );
+  const remainingIntegrations = integrations.filter(
+    (integration) =>
+      !priorityIntegrationIds.includes(integration.id) &&
+      integration.group !== "Kimlik ve Yetki"
+  );
   const workflowGraph = buildWorkflowGraph(
     selectedEmail,
     classification,
@@ -1177,11 +1220,6 @@ function App() {
           <div className="metrics-grid" aria-label="Panel metrikleri">
             <Metric label="Toplam e-posta" value={dashboard?.total_emails ?? 0} />
             <Metric
-              label="İnsan onayı"
-              value={dashboard?.human_review_count ?? 0}
-              tone="warning"
-            />
-            <Metric
               label="Kritik risk"
               value={dashboard?.critical_risk_count ?? 0}
               tone="danger"
@@ -1192,17 +1230,12 @@ function App() {
               tone="success"
             />
             <Metric
-              label="Bekleyen"
+              label="Onay bekleyen"
               value={operationalDashboard?.pending_review_count ?? 0}
               tone="warning"
             />
             <Metric
-              label="Süre yaklaşan"
-              value={dashboard?.sla_due_soon_count ?? 0}
-              tone="warning"
-            />
-            <Metric
-              label="Süre geciken"
+              label="SLA aşımı"
               value={dashboard?.sla_overdue_count ?? 0}
               tone="danger"
             />
@@ -1210,10 +1243,6 @@ function App() {
               label="Yönlendirilen"
               value={operationalDashboard?.routing_status_distribution?.Routed ?? 0}
               tone="success"
-            />
-            <Metric
-              label="Geri bildirim"
-              value={feedbackData.feedback_count ?? 0}
             />
           </div>
         </section>
@@ -1516,33 +1545,62 @@ function App() {
           <div className="panel-heading compact-heading">
             <div>
               <p className="eyebrow">Entegrasyon Modülü</p>
-              <h2>Kurumsal Sistem Bağlantıları</h2>
+              <h2>Kurumsal Bağlantı Hazırlığı</h2>
             </div>
             <span>{formatDate(integrationOverview?.generated_at)}</span>
           </div>
 
+          <div className="integration-readiness">
+            <div>
+              <span>Ortam</span>
+              <strong>Sentetik test</strong>
+              <p>Canlı kurum bilgisi bekleniyor</p>
+            </div>
+            <div>
+              <span>Kaynak kutu</span>
+              <strong>webmaster@rekabet.gov.tr</strong>
+              <p>Ortak posta kutusu senaryosu</p>
+            </div>
+            <div>
+              <span>Hazır sözleşme</span>
+              <strong>{integrationSummary.ready_count ?? 0}</strong>
+              <p>Test edilebilir bağlantı tanımı</p>
+            </div>
+            <div>
+              <span>Plan bekleyen</span>
+              <strong>{integrationSummary.planned_count ?? 0}</strong>
+              <p>Uç nokta veya yetki bekliyor</p>
+            </div>
+          </div>
+
+          <div className="integration-flow-strip" aria-label="Entegrasyon akışı">
+            {INTEGRATION_ROADMAP_STEPS.map((step) => (
+              <div className="integration-flow-step" key={step.label}>
+                <span>{step.label}</span>
+                <strong>{step.title}</strong>
+                <p>{step.detail}</p>
+              </div>
+            ))}
+          </div>
+
           <div className="integration-summary-grid">
             <ReportMetric
-              label="Toplam entegrasyon"
+              label="Toplam bağlantı"
               value={integrationSummary.total_integrations ?? 0}
             />
             <ReportMetric
-              label="Hazır bağlantı"
-              value={integrationSummary.ready_count ?? 0}
+              label="İçe aktarım"
+              value={integrationSummary.inbound_count ?? 0}
               tone="success"
             />
             <ReportMetric
-              label="Uyarı"
-              value={integrationSummary.warning_count ?? 0}
-              tone="warning"
-            />
-            <ReportMetric
-              label="Planlanan"
-              value={integrationSummary.planned_count ?? 0}
+              label="Dışa aktarım"
+              value={integrationSummary.outbound_count ?? 0}
             />
             <ReportMetric
               label="Sentetik çalışan"
               value={integrationSummary.simulated_count ?? 0}
+              tone="warning"
             />
             <ReportMetric
               label="Ortalama sağlık"
@@ -1551,14 +1609,14 @@ function App() {
             />
           </div>
 
-          <div className="integration-layout">
+          <div className="integration-focus-grid">
             <div className="integration-inventory">
               <div className="panel-heading compact-heading">
-                <h3>Entegrasyon Envanteri</h3>
-                <span>Sentetik bağlantı durumları</span>
+                <h3>Kritik Bağlantılar</h3>
+                <span>Webmaster kutusundan evrak ve denetim sistemlerine giden yol</span>
               </div>
               <div className="integration-card-grid">
-                {(integrationOverview?.integrations || []).map((integration) => (
+                {priorityIntegrations.map((integration) => (
                   <IntegrationCard
                     integration={integration}
                     key={integration.id}
@@ -1571,7 +1629,7 @@ function App() {
 
             <aside className="integration-side-panel">
               <div className="compact-section">
-                <h3>Sentetik Dizin</h3>
+                <h3>Birim Eşleştirme</h3>
                 {(integrationOverview?.directory_units || []).map((unit) => (
                   <div className="directory-row" key={unit.unit}>
                     <strong>{unit.unit}</strong>
@@ -1584,7 +1642,7 @@ function App() {
               </div>
 
               <div className="compact-section">
-                <h3>Veri Akışları</h3>
+                <h3>Veri Akışı</h3>
                 {(integrationOverview?.data_flows || []).map((flow) => (
                   <div className="flow-row" key={`${flow.source}-${flow.target}`}>
                     <div>
@@ -1596,9 +1654,49 @@ function App() {
                   </div>
                 ))}
               </div>
+            </aside>
+          </div>
 
-              <div className="compact-section">
-                <h3>Güvenlik Kontrolleri</h3>
+          <div className="integration-secondary-grid">
+            <div className="integration-inventory">
+              <div className="panel-heading compact-heading">
+                <h3>Kimlik ve Yetki</h3>
+                <span>Kurumsal kullanıcı ve rol aktarımı</span>
+              </div>
+              <div className="integration-card-grid compact-cards">
+                {identityIntegrations.map((integration) => (
+                  <IntegrationCard
+                    integration={integration}
+                    key={integration.id}
+                    onTest={handleIntegrationTest}
+                    testDisabled={!can("view_dashboard")}
+                  />
+                ))}
+              </div>
+            </div>
+
+            <div className="integration-inventory">
+              <div className="panel-heading compact-heading">
+                <h3>Destekleyici Sistemler</h3>
+                <span>Bildirim, KEP ve iş takip bağlantıları</span>
+              </div>
+              <div className="integration-card-grid compact-cards">
+                {remainingIntegrations.map((integration) => (
+                  <IntegrationCard
+                    integration={integration}
+                    key={integration.id}
+                    onTest={handleIntegrationTest}
+                    testDisabled={!can("view_dashboard")}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="integration-control-grid">
+            <div className="compact-section">
+              <h3>Güvenlik Kontrolleri</h3>
+              <div className="security-list">
                 {(integrationOverview?.security_controls || []).map((control) => (
                   <div className="security-row" key={control.name}>
                     <strong>{control.name}</strong>
@@ -1607,7 +1705,40 @@ function App() {
                   </div>
                 ))}
               </div>
-            </aside>
+            </div>
+
+            <div className="compact-section">
+              <h3>Canlıya Geçiş Ön Koşulları</h3>
+              <div className="go-live-list">
+                <span>Kurumsal uç nokta adresleri</span>
+                <span>Servis hesabı ve yetki kapsamı</span>
+                <span>IP kısıtı, sertifika ve gizli anahtar kasası</span>
+                <span>EBYS, DMS ve bildirim servis sözleşmeleri</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="integration-inventory all-integrations">
+            <div className="panel-heading compact-heading">
+              <h3>Tüm Entegrasyon Envanteri</h3>
+              <span>Hazırlanan bağlantı sözleşmeleri</span>
+            </div>
+            <div className="integration-table">
+              <span>Sistem</span>
+              <span>Grup</span>
+              <span>Yön</span>
+              <span>Durum</span>
+              <span>Sonraki adım</span>
+              {integrations.map((integration) => (
+                <div className="integration-table-row" key={integration.id}>
+                  <strong>{integration.name}</strong>
+                  <span>{integration.group}</span>
+                  <span>{integration.direction}</span>
+                  <span>{integration.status}</span>
+                  <p>{integration.next_step}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
       )}
@@ -2658,11 +2789,11 @@ function IntegrationCard({ integration, onTest, testDisabled }) {
       </div>
       <div className="integration-meta-grid">
         <Meta label="Yön" value={integration.direction} />
-        <Meta label="Mod" value={integration.mode} />
+        <Meta label="Bağlantı" value={integration.mode} />
         <Meta label="Sahip" value={integration.owner} />
         <Meta label="Sağlık" value={`${integration.health_score}%`} />
       </div>
-      <p className="integration-contract">{integration.data_contract}</p>
+      <p className="integration-contract">Veri alanları: {integration.data_contract}</p>
       <div className="integration-capabilities">
         {integration.capabilities?.slice(0, 3).map((capability) => (
           <span key={capability}>{capability}</span>
@@ -2676,7 +2807,7 @@ function IntegrationCard({ integration, onTest, testDisabled }) {
           type="button"
           onClick={() => onTest(integration.id)}
         >
-          Bağlantıyı Test Et
+          Test Çalıştır
         </button>
       </div>
       <p className="integration-next-step">{integration.next_step}</p>
