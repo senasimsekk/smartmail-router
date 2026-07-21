@@ -10,7 +10,7 @@ SmartMail Router, kurumsal ortak posta kutularına gelen mailleri otomatik olara
 
 - Sentetik e-posta verisi ile ortak posta kutusu simülasyonu
 - Mail ön işleme: HTML temizleme, imza temizleme, sınıflandırma metni üretme
-- Kural tabanlı sınıflandırma ve mock AI ikinci görüş katmanı
+- Kural tabanlı sınıflandırma ve API key varsa OpenAI LLM, yoksa demo cevap üreten ikinci görüş katmanı
 - Seed veri ve feedback kayıtlarıyla eğitilebilen TF-IDF + Logistic Regression modeli
 - Birim yönlendirme, güven skoru ve insan onayı kuyruğu
 - Ek dosya adı üzerinden dosya türü, OCR ihtiyacı, risk ve evrak kaydı önerisi
@@ -50,18 +50,21 @@ Genel akış:
 Bu MVP'de üç katmanlı bir yaklaşım kullanılır:
 
 - Kural tabanlı sınıflandırma: Anahtar kelime ve bağlam kurallarıyla hızlı, açıklanabilir karar üretir.
-- Mock AI ikinci görüş: Gerçek LLM entegrasyonu yerine demo amaçlı ikinci karar katmanı sunar.
+- LLM ikinci görüş: `OPENAI_API_KEY` tanımlıysa OpenAI Responses API üzerinden yapılandırılmış JSON sınıflandırma ve özet üretir; key yoksa aynı arayüzle demo cevap döner.
 - Eğitilebilir lokal model: Seed veri ve feedback kayıtlarından `TF-IDF + Logistic Regression` modeli eğitilir.
 
 Lokal model gerçek bir makine öğrenmesi modelidir, fakat LLM fine-tune değildir. Mail metinleri TF-IDF ile sayısal özelliklere çevrilir; model kategori, birim ve öncelik için ayrı tahminler üretir. Eğitilmiş model `backend/model_artifacts/` altında saklanır ve bu klasör git'e eklenmez.
+
+LLM katmanı doğrudan nihai karar vermez. Ön işlenmiş mail, eklerden çıkarılan metin, kural tabanlı sonuç ve izinli kategori/birim listesi modele gönderilir. Model sadece özet, gerekçe, kategori, birim, öncelik ve güven skorunu JSON olarak döndürür; kritik kategorilerde insan onayı kuralı korunur. Varsayılan model `OPENAI_MODEL` ile değiştirilebilir, tanımlı değilse maliyet odaklı `gpt-5.6-luna` kullanılır.
 
 Model API'leri:
 
 - `GET /emails/model/status`
 - `POST /emails/model/train`
 - `GET /emails/{email_id}/model-prediction`
+- `GET /emails/{email_id}/ai-analysis`
 
-Bu yaklaşım, az veriyle çalışabilen, yerelde koşan ve veri gizliliği açısından daha kontrollü bir eğitim mekanizması sağlar. İleride veri seti büyüdüğünde gerçek LLM entegrasyonu veya fine-tune akışı eklenebilir.
+Bu yaklaşım, az veriyle çalışabilen, yerelde koşan ve veri gizliliği açısından daha kontrollü bir eğitim mekanizması sağlar. LLM tarafı ise gerçek API veya demo fallback ile aynı ürün akışında gösterilebilir.
 
 ## Öne Çıkan Modüller
 
@@ -134,7 +137,7 @@ cd backend
 8. Onay bekleyen maili `Onayla` veya `Yönlendir` aksiyonuyla işleme al.
 9. Aktif rolü `İzleyici` yaparak aksiyon butonlarının kapandığını, `Operatör` rolünde tekrar açıldığını göster.
 10. Yanlış yönlendirme simülasyonu için düzeltme formundan yeni kategori/birim seçip feedback kaydet.
-11. Eğitim verisi bölümünden modeli eğit, model tahminini kural/AI kararıyla karşılaştır ve JSONL çıktısını göster.
+11. Eğitim verisi bölümünden modeli eğit, model tahminini kural/LLM kararıyla karşılaştır ve JSONL çıktısını göster.
 12. `Posta Kutusunu Senkronize Et` aksiyonuyla webmaster ortak kutusuna gelen e-postaların alınmasını, analiz edilmesini ve ilgili birim akışına yönlendirilmesini göster.
 13. Manuel e-posta formuna kısa bir örnek girerek sistemin yeni maili otomatik işlemesini ve SLA durumunun oluşmasını göster.
 

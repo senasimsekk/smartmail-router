@@ -1103,7 +1103,9 @@ function App() {
   const trainedModelPrediction =
     details?.modelPrediction?.model_prediction?.prediction || {};
   const ruleBasedClassification = aiAnalysis.rule_based_classification || {};
-  const mockAiClassification = aiAnalysis.mock_ai_classification || {};
+  const llmClassification =
+    aiAnalysis.llm_classification || aiAnalysis.mock_ai_classification || {};
+  const llmConnection = aiAnalysis.llm_connection || {};
   const reportKpis = managementReport?.kpis || {};
   const integrationSummary = integrationOverview?.summary || {};
   const workflowGraph = buildWorkflowGraph(
@@ -1697,21 +1699,37 @@ function App() {
                         </section>
 
                         <section className="section-block">
-                          <h3>Yapay Zeka ve Kural Kararı</h3>
+                          <h3>LLM Destekli Karar</h3>
                           <div className="analysis-grid">
                             <Meta
                               label="Kural kategorisi"
                               value={ruleBasedClassification.category}
                             />
                             <Meta
-                              label="Yapay zeka kategorisi"
-                              value={mockAiClassification.ai_category}
+                              label="LLM kategorisi"
+                              value={llmClassification.ai_category}
                             />
                             <Meta
-                              label="Yapay zeka güveni"
+                              label="LLM güveni"
                               value={formatPercent(
-                                mockAiClassification.ai_confidence_score
+                                llmClassification.ai_confidence_score
                               )}
+                            />
+                            <Meta
+                              label="LLM modu"
+                              value={
+                                aiAnalysis.ai_mode === "openai_api"
+                                  ? "OpenAI API"
+                                  : "Demo"
+                              }
+                            />
+                            <Meta
+                              label="Bağlantı"
+                              value={
+                                llmConnection.status === "connected"
+                                  ? "API bağlı"
+                                  : "Demo cevap"
+                              }
                             />
                             <Meta
                               label="Karar kaynağı"
@@ -1723,6 +1741,18 @@ function App() {
                               }
                             />
                           </div>
+                          <TextBlock
+                            title="LLM özeti"
+                            text={llmClassification.ai_summary}
+                          />
+                          <TextBlock
+                            title="LLM gerekçesi"
+                            text={llmClassification.ai_explanation}
+                          />
+                          <ListBlock
+                            title="LLM kanıtları"
+                            items={llmClassification.evidence}
+                          />
                         </section>
 
                         <section className="section-block">
