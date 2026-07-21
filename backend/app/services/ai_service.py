@@ -1,5 +1,6 @@
 import json
 import os
+import ssl
 import urllib.error
 import urllib.request
 
@@ -86,6 +87,20 @@ def get_openai_api_key() -> str | None:
 
 def get_openai_model() -> str:
     return os.getenv("OPENAI_MODEL", DEFAULT_OPENAI_MODEL)
+
+
+def build_ssl_context():
+    try:
+        import certifi
+
+        return ssl.create_default_context(cafile=certifi.where())
+    except ModuleNotFoundError:
+        try:
+            from pip._vendor import certifi as pip_certifi
+
+            return ssl.create_default_context(cafile=pip_certifi.where())
+        except Exception:
+            return ssl.create_default_context()
 
 
 def should_use_ai(rule_classification: dict) -> bool:
@@ -373,7 +388,11 @@ def call_openai_llm(input_package: dict) -> dict:
     )
 
     try:
-        with urllib.request.urlopen(request, timeout=20) as response:
+        with urllib.request.urlopen(
+            request,
+            timeout=20,
+            context=build_ssl_context(),
+        ) as response:
             response_data = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as error:
         detail = error.read().decode("utf-8", errors="ignore")
