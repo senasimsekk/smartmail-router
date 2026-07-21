@@ -231,6 +231,29 @@ const INTEGRATION_ROADMAP_STEPS = [
   },
 ];
 
+const TRAINING_PIPELINE_STEPS = [
+  {
+    label: "Veri",
+    title: "Etiketli e-postalar",
+    detail: "Sentetik örnekler ve operatör düzeltmeleri eğitim setine alınır.",
+  },
+  {
+    label: "Metin",
+    title: "Ön işleme",
+    detail: "Konu, gövde, gönderen ve ek metinleri tek sınıflandırma metnine çevrilir.",
+  },
+  {
+    label: "Özellik",
+    title: "TF-IDF",
+    detail: "Sık geçen ama ayırt edici kelime ve ikili kelime grupları ağırlıklandırılır.",
+  },
+  {
+    label: "Model",
+    title: "Lojistik regresyon",
+    detail: "Kategori, birim ve öncelik için ayrı tahmin modeli eğitilir.",
+  },
+];
+
 function formatPercent(value) {
   if (typeof value !== "number") {
     return "-";
@@ -363,6 +386,29 @@ function getDistributionEntries(distribution = {}) {
   return Object.entries(distribution)
     .filter(([, count]) => count > 0)
     .sort(([, firstCount], [, secondCount]) => secondCount - firstCount);
+}
+
+function buildTrainingExampleDistribution(examples = [], field) {
+  return examples.reduce((distribution, example) => {
+    const label = example.corrected_label?.[field] || example[field];
+
+    if (!label) {
+      return distribution;
+    }
+
+    return {
+      ...distribution,
+      [label]: (distribution[label] || 0) + 1,
+    };
+  }, {});
+}
+
+function getModelTypeLabel(modelType) {
+  if (!modelType) {
+    return "TF-IDF + Lojistik Regresyon";
+  }
+
+  return modelType.replace("Logistic Regression", "Lojistik Regresyon");
 }
 
 function matchesQueueSearch(email, searchTerm) {
@@ -1137,6 +1183,28 @@ function App() {
   const reportKpis = managementReport?.kpis || {};
   const evaluationSummary = evaluationReport?.summary || {};
   const integrationSummary = integrationOverview?.summary || {};
+  const modelMetadata = modelStatus.metadata || {};
+  const modelLabelDistribution = modelMetadata.label_distribution || {};
+  const totalTrainingExamples =
+    modelMetadata.training_example_count ??
+    trainingData.training_example_count ??
+    0;
+  const feedbackTrainingExamples =
+    modelMetadata.feedback_example_count ??
+    trainingData.training_example_count ??
+    0;
+  const seedTrainingExamples =
+    modelMetadata.seed_example_count ??
+    Math.max(totalTrainingExamples - feedbackTrainingExamples, 0);
+  const trainingCategoryDistribution =
+    modelLabelDistribution.category ||
+    buildTrainingExampleDistribution(trainingData.training_examples, "category");
+  const trainingDepartmentDistribution =
+    modelLabelDistribution.department ||
+    buildTrainingExampleDistribution(trainingData.training_examples, "department");
+  const trainingPriorityDistribution =
+    modelLabelDistribution.priority ||
+    buildTrainingExampleDistribution(trainingData.training_examples, "priority");
   const integrations = integrationOverview?.integrations || [];
   const priorityIntegrationIds = [
     "exchange_outlook",
@@ -2679,57 +2747,117 @@ function App() {
 
       {activePage === "training" && (
         <section className="training-page page-panel">
-          <div className="compact-section training-section">
-            <div className="panel-heading compact-heading">
-              <h3>Eğitim Verisi</h3>
-              <div className="button-row">
-                <button
-                  className="secondary-button small-button"
-                  disabled={!can("view_training_data")}
-                  type="button"
-                  onClick={handleTrainModel}
-                >
-                  Modeli Eğit
-                </button>
-                <button
-                  className="secondary-button small-button"
-                  disabled={!can("view_training_data")}
-                  type="button"
-                  onClick={handleDownloadTrainingJsonl}
-                >
-                  Eğitim Verisini İndir
-                </button>
+          <div className="panel-heading compact-heading">
+            <div>
+              <p className="eyebrow">Model Eğitimi</p>
+              <h2>Eğitim ve Öğrenme Yönetimi</h2>
+            </div>
+            <div className="button-row">
+              <button
+                className="secondary-button small-button"
+                disabled={!can("view_training_data")}
+                type="button"
+                onClick={handleTrainModel}
+              >
+                Modeli Eğit
+              </button>
+              <button
+                className="secondary-button small-button"
+                disabled={!can("view_training_data")}
+                type="button"
+                onClick={handleDownloadTrainingJsonl}
+              >
+                Eğitim Verisini İndir
+              </button>
+            </div>
+          </div>
+
+          <div className="training-kpi-grid">
+            <ReportMetric
+              label="Model durumu"
+              value={modelStatus.is_trained ? "Eğitildi" : "Bekliyor"}
+              tone={modelStatus.is_trained ? "success" : "warning"}
+            />
+            <ReportMetric
+              label="Eğitim örneği"
+              value={totalTrainingExamples}
+            />
+            <ReportMetric
+              label="Sentetik veri"
+              value={seedTrainingExamples}
+            />
+            <ReportMetric
+              label="Geri bildirim"
+              value={feedbackTrainingExamples}
+              tone={feedbackTrainingExamples > 0 ? "success" : "warning"}
+            />
+            <ReportMetric
+              label="Model tipi"
+              value={getModelTypeLabel(modelMetadata.model_type)}
+            />
+            <ReportMetric
+              label="Son eğitim"
+              value={modelMetadata.trained_at ? formatDate(modelMetadata.trained_at) : "-"}
+            />
+          </div>
+
+          {modelStatus.error && (
+            <div className="alert warning">{modelStatus.error}</div>
+          )}
+
+          <div className="training-layout">
+            <div className="training-section-card">
+              <div className="panel-heading compact-heading">
+                <h3>Öğrenme Akışı</h3>
+                <span>LLM olmadan kullanılan eğitilebilir model hattı</span>
+              </div>
+              <div className="training-pipeline">
+                {TRAINING_PIPELINE_STEPS.map((step, index) => (
+                  <div className="training-step" key={step.label}>
+                    <span>{index + 1}</span>
+                    <div>
+                      <em>{step.label}</em>
+                      <strong>{step.title}</strong>
+                      <p>{step.detail}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
-            <div className="training-summary">
-              <Meta
-                label="Geri bildirim"
-                value={feedbackData.feedback_count ?? 0}
-              />
-              <Meta
-                label="Eğitim örneği"
-                value={trainingData.training_example_count ?? 0}
-              />
-              <Meta
-                label="Model"
-                value={modelStatus.is_trained ? "Eğitildi" : "Eğitilmedi"}
-              />
-              <Meta
-                label="Model örneği"
-                value={modelStatus.metadata?.training_example_count ?? 0}
-              />
+            <div className="training-section-card">
+              <div className="panel-heading compact-heading">
+                <h3>Veri Seti Kompozisyonu</h3>
+                <span>Modelin öğrendiği etiket alanları</span>
+              </div>
+              <div className="training-distribution-grid">
+                <DistributionList
+                  title="Kategori dağılımı"
+                  distribution={trainingCategoryDistribution}
+                />
+                <DistributionList
+                  title="Birim dağılımı"
+                  distribution={trainingDepartmentDistribution}
+                />
+                <DistributionList
+                  title="Öncelik dağılımı"
+                  distribution={trainingPriorityDistribution}
+                />
+              </div>
             </div>
+          </div>
 
-            {modelStatus.error && (
-              <p className="muted">{modelStatus.error}</p>
-            )}
-
-            {feedbackData.feedbacks.length === 0 ? (
-              <p className="muted">Henüz geri bildirim kaydı yok.</p>
-            ) : (
+          <div className="training-layout secondary-training-layout">
+            <div className="training-section-card">
+              <div className="panel-heading compact-heading">
+                <h3>Operatör Geri Bildirimleri</h3>
+                <span>Yanlış yönlendirmeler eğitim verisine dönüşür</span>
+              </div>
+              {feedbackData.feedbacks.length === 0 ? (
+                <p className="muted">Henüz operatör düzeltmesi yok.</p>
+              ) : (
               <div className="feedback-list">
-                {feedbackData.feedbacks.slice(0, 4).map((feedback) => (
+                {feedbackData.feedbacks.slice(0, 5).map((feedback) => (
                   <div className="feedback-row" key={feedback.id}>
                     <span>E-posta #{feedback.email_id}</span>
                     <strong>
@@ -2740,11 +2868,35 @@ function App() {
                   </div>
                 ))}
               </div>
-            )}
+              )}
+            </div>
 
-            {trainingData.training_examples.length > 0 && (
-              <p className="muted">Eğitim verisi indirilmeye hazır.</p>
-            )}
+            <div className="training-section-card">
+              <div className="panel-heading compact-heading">
+                <h3>Eğitim Örnekleri</h3>
+                <span>JSONL dışa aktarımına girecek örnek kayıtlar</span>
+              </div>
+              {trainingData.training_examples.length === 0 ? (
+                <p className="muted">
+                  Geri bildirimden gelen yeni eğitim örneği yok. Sentetik seed veri
+                  model eğitiminde kullanılmaya devam eder.
+                </p>
+              ) : (
+                <div className="training-example-list">
+                  {trainingData.training_examples.slice(0, 5).map((example) => (
+                    <div className="training-example-row" key={example.email_id}>
+                      <span>#{example.email_id}</span>
+                      <strong>{example.subject}</strong>
+                      <p>
+                        {example.corrected_label.category} ·{" "}
+                        {example.corrected_label.department} ·{" "}
+                        {example.corrected_label.priority}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </section>
       )}

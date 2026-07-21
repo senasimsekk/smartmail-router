@@ -211,13 +211,120 @@ textarea {
 }
 
 .training-page {
-  display: block;
+  display: grid;
+  gap: 16px;
 }
 
 .training-page .compact-section {
   margin-top: 0;
   border-top: 0;
   padding-top: 0;
+}
+
+.training-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.training-kpi-grid .report-metric strong {
+  font-size: 19px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.training-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.82fr) minmax(0, 1.18fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.secondary-training-layout {
+  grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1.2fr);
+}
+
+.training-section-card {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 14px;
+}
+
+.training-section-card h3 {
+  margin: 0;
+  color: var(--brand-dark);
+  font-size: 18px;
+}
+
+.training-section-card .panel-heading span {
+  font-size: 13px;
+}
+
+.training-pipeline {
+  display: grid;
+  gap: 10px;
+}
+
+.training-step {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 10px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.training-step:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.training-step > span {
+  display: inline-grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background: #fff2f1;
+  color: var(--brand);
+  font-weight: 800;
+}
+
+.training-step div {
+  display: grid;
+  gap: 3px;
+}
+
+.training-step em {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.training-step strong {
+  color: var(--brand-dark);
+  font-size: 15px;
+}
+
+.training-step p,
+.training-example-row p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.training-distribution-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.training-distribution-grid .distribution-block {
+  margin-top: 0;
 }
 
 .overview-section {
@@ -1814,21 +1921,24 @@ textarea {
   gap: 8px;
 }
 
-.feedback-row {
+.feedback-row,
+.training-example-row {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #ffffff;
   padding: 10px;
 }
 
-.feedback-row span {
+.feedback-row span,
+.training-example-row span {
   display: block;
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
 }
 
-.feedback-row strong {
+.feedback-row strong,
+.training-example-row strong {
   display: block;
   margin-top: 4px;
   overflow-wrap: anywhere;
@@ -1839,6 +1949,11 @@ textarea {
   margin: 6px 0 0;
   color: var(--muted);
   line-height: 1.4;
+}
+
+.training-example-list {
+  display: grid;
+  gap: 8px;
 }
 
 .training-preview {
@@ -1952,6 +2067,9 @@ textarea {
   .integration-focus-grid,
   .integration-secondary-grid,
   .integration-control-grid,
+  .training-kpi-grid,
+  .training-layout,
+  .training-distribution-grid,
   .integration-card-grid {
     grid-template-columns: 1fr;
   }
@@ -2026,6 +2144,9 @@ textarea {
   .integration-focus-grid,
   .integration-secondary-grid,
   .integration-control-grid,
+  .training-kpi-grid,
+  .training-layout,
+  .training-distribution-grid,
   .integration-meta-grid,
   .preprocess-grid,
   .attachment-upload-form,
