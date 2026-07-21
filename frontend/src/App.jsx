@@ -122,6 +122,7 @@ const DETAIL_TABS = [
 const PAGE_TABS = [
   { value: "operation", label: "Operasyon" },
   { value: "reports", label: "Raporlama" },
+  { value: "evaluation", label: "Değerlendirme" },
   { value: "integrations", label: "Entegrasyonlar" },
   { value: "ingestion", label: "E-posta Alma" },
   { value: "training", label: "Model Eğitimi" },
@@ -492,6 +493,7 @@ function App() {
   const [dashboard, setDashboard] = useState(null);
   const [operationalDashboard, setOperationalDashboard] = useState(null);
   const [managementReport, setManagementReport] = useState(null);
+  const [evaluationReport, setEvaluationReport] = useState(null);
   const [integrationOverview, setIntegrationOverview] = useState(null);
   const [pendingReview, setPendingReview] = useState([]);
   const [feedbackData, setFeedbackData] = useState({
@@ -587,6 +589,7 @@ function App() {
         dashboardData,
         operationalData,
         reportData,
+        evaluationData,
         integrationData,
         pendingData,
         feedbackResult,
@@ -597,6 +600,7 @@ function App() {
           request("/emails/dashboard/summary"),
           request("/emails/dashboard/operational"),
           request("/emails/reports/management"),
+          request("/emails/evaluation/report"),
           request("/emails/integrations/overview"),
           request("/emails/review/pending"),
           request("/emails/feedback/all"),
@@ -607,6 +611,7 @@ function App() {
       setDashboard(dashboardData);
       setOperationalDashboard(operationalData);
       setManagementReport(reportData);
+      setEvaluationReport(evaluationData);
       setIntegrationOverview(integrationData);
       setPendingReview(pendingData.pending_emails || []);
       setFeedbackData(feedbackResult);
@@ -1107,6 +1112,7 @@ function App() {
     aiAnalysis.llm_classification || aiAnalysis.mock_ai_classification || {};
   const llmConnection = aiAnalysis.llm_connection || {};
   const reportKpis = managementReport?.kpis || {};
+  const evaluationSummary = evaluationReport?.summary || {};
   const integrationSummary = integrationOverview?.summary || {};
   const workflowGraph = buildWorkflowGraph(
     selectedEmail,
@@ -1337,6 +1343,171 @@ function App() {
             ))}
           </div>
         </div>
+        </section>
+      )}
+
+      {activePage === "evaluation" && (
+        <section className="reporting-section" aria-label="Değerlendirme metrikleri">
+          <div className="panel-heading compact-heading">
+            <div>
+              <p className="eyebrow">Değerlendirme Modülü</p>
+              <h2>Başarı Metrikleri</h2>
+            </div>
+            <span>{formatDate(evaluationReport?.generated_at)}</span>
+          </div>
+
+          <div className="report-kpi-grid">
+            <ReportMetric
+              label="Etiketli e-posta"
+              value={evaluationSummary.labeled_email_count ?? 0}
+            />
+            <ReportMetric
+              label="Tam eşleşme"
+              value={formatPercent(evaluationSummary.exact_match_rate)}
+              tone="success"
+            />
+            <ReportMetric
+              label="Kategori doğruluğu"
+              value={formatPercent(evaluationSummary.category_accuracy_rate)}
+              tone="success"
+            />
+            <ReportMetric
+              label="Birim doğruluğu"
+              value={formatPercent(evaluationSummary.department_accuracy_rate)}
+              tone="success"
+            />
+            <ReportMetric
+              label="Öncelik doğruluğu"
+              value={formatPercent(evaluationSummary.priority_accuracy_rate)}
+              tone="success"
+            />
+            <ReportMetric
+              label="Hatalı eşleşme"
+              value={evaluationSummary.wrong_match_count ?? 0}
+              tone="danger"
+            />
+            <ReportMetric
+              label="Düşük güven"
+              value={evaluationSummary.low_confidence_count ?? 0}
+              tone="warning"
+            />
+            <ReportMetric
+              label="Düzeltme oranı"
+              value={formatPercent(evaluationSummary.feedback_misdirection_rate)}
+              tone="warning"
+            />
+          </div>
+
+          <div className="report-grid evaluation-grid">
+            <div className="report-card">
+              <h3>Kategori Performansı</h3>
+              {(evaluationReport?.category_performance || []).length > 0 ? (
+                <div className="evaluation-list">
+                  {evaluationReport.category_performance.map((row) => (
+                    <div className="evaluation-row" key={row.category}>
+                      <div>
+                        <strong>{row.category}</strong>
+                        <span>
+                          {row.correct}/{row.total} doğru
+                        </span>
+                      </div>
+                      <em>{formatPercent(row.accuracy_rate)}</em>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="muted">Etiketli kategori verisi yok.</p>
+              )}
+            </div>
+
+            <div className="report-card">
+              <h3>Karışan Kategoriler</h3>
+              {(evaluationReport?.confusion_pairs || []).length > 0 ? (
+                <div className="evaluation-list">
+                  {evaluationReport.confusion_pairs.map((row) => (
+                    <div className="evaluation-row" key={row.pair}>
+                      <strong>{row.pair}</strong>
+                      <em>{row.count}</em>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="muted">Kategori karışması görünmüyor.</p>
+              )}
+            </div>
+
+            <div className="report-card">
+              <h3>Güven Dağılımı</h3>
+              <DistributionList
+                title="Güven seviyesi"
+                distribution={evaluationReport?.confidence_distribution}
+              />
+            </div>
+
+            <div className="report-card">
+              <h3>İyileştirme Önerileri</h3>
+              <ListBlock items={evaluationReport?.recommendations} />
+            </div>
+          </div>
+
+          <div className="report-grid evaluation-grid compact-evaluation-grid">
+            <div className="report-card">
+              <h3>Birim Düzeltmeleri</h3>
+              <EvaluationCorrectionList
+                rows={
+                  evaluationReport?.feedback_corrections
+                    ?.department_corrections
+                }
+              />
+            </div>
+
+            <div className="report-card">
+              <h3>Kategori Düzeltmeleri</h3>
+              <EvaluationCorrectionList
+                rows={
+                  evaluationReport?.feedback_corrections?.category_corrections
+                }
+              />
+            </div>
+
+            <div className="report-card">
+              <h3>Öncelik Düzeltmeleri</h3>
+              <EvaluationCorrectionList
+                rows={
+                  evaluationReport?.feedback_corrections?.priority_corrections
+                }
+              />
+            </div>
+          </div>
+
+          <div className="mailbox-report">
+            <div className="panel-heading compact-heading">
+              <h3>Örnek Hatalar</h3>
+              <span>Beklenen sonuç ile sistem tahmini karşılaştırması</span>
+            </div>
+            <div className="evaluation-table">
+              <span>E-posta</span>
+              <span>Beklenen kategori</span>
+              <span>Tahmin</span>
+              <span>Birim</span>
+              <span>Güven</span>
+              {(evaluationReport?.sample_errors || []).length > 0 ? (
+                evaluationReport.sample_errors.map((row) => (
+                  <div className="evaluation-table-row" key={row.email_id}>
+                    <strong>#{row.email_id} {row.subject}</strong>
+                    <span>{row.expected_category}</span>
+                    <span>{row.predicted_category}</span>
+                    <span>{row.predicted_department}</span>
+                    <span>{formatPercent(row.confidence_score)}</span>
+                  </div>
+                ))
+              ) : (
+                <div className="evaluation-table-empty">
+                  Etiketli veri üzerinde örnek hata görünmüyor.
+                </div>
+              )}
+            </div>
+          </div>
         </section>
       )}
 
@@ -2538,12 +2709,29 @@ function ListBlock({ title, items = [] }) {
 
   return (
     <div className="text-block">
-      <h4>{title}</h4>
+      {title && <h4>{title}</h4>}
       <ul>
         {items.map((item) => (
           <li key={item}>{item}</li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function EvaluationCorrectionList({ rows = [] }) {
+  if (!rows.length) {
+    return <p className="muted">Düzeltme kaydı yok.</p>;
+  }
+
+  return (
+    <div className="evaluation-list">
+      {rows.map((row) => (
+        <div className="evaluation-row" key={row.correction}>
+          <strong>{row.correction}</strong>
+          <em>{row.count}</em>
+        </div>
+      ))}
     </div>
   );
 }

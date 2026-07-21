@@ -1,7 +1,9 @@
 import unittest
 from datetime import datetime
+from unittest.mock import patch
 from types import SimpleNamespace
 
+from app.services.ai_service import analyze_email_with_mock_ai
 from app.services.authorization_service import (
     get_available_roles,
     role_has_permission,
@@ -16,6 +18,7 @@ from app.services.dashboard_service import build_operational_report, calculate_r
 from app.services.email_ingestion_service import normalize_attachment_names
 from app.services.email_analysis_service import generate_summary
 from app.services.email_processing_service import determine_processing_routing_decision
+from app.services.evaluation_report_service import build_evaluation_report
 from app.services.integration_service import (
     INTEGRATION_CATALOG,
     build_integration_status,
@@ -134,6 +137,75 @@ class EmailAnalysisServiceTests(unittest.TestCase):
         self.assertIn("16/07/2026", summary)
         self.assertIn("kvkk-dilekce.pdf", summary)
         self.assertIn("Hukuk Müşavirliği", summary)
+
+
+class AiServiceTests(unittest.TestCase):
+    def test_uses_demo_llm_fallback_without_openai_key(self):
+        email = make_email(
+            subject="Portal giriş hatası",
+            body="Portal girişinde şifre hatası alıyorum.",
+        )
+        classification = {
+            "category": "Teknik Destek",
+            "department": "Bilgi İşlem",
+            "priority": "Normal",
+            "requires_human_review": False,
+            "confidence_score": 0.91,
+            "matched_keywords": ["portal", "şifre"],
+        }
+
+        with patch.dict("os.environ", {}, clear=True):
+            result = analyze_email_with_mock_ai(email, classification)
+
+        self.assertEqual(result["ai_mode"], "demo")
+        self.assertEqual(result["llm_connection"]["status"], "demo_fallback")
+        self.assertEqual(
+            result["llm_classification"]["ai_department"],
+            "Bilgi İşlem",
+        )
+
+
+class EvaluationReportServiceTests(unittest.TestCase):
+    def test_builds_evaluation_metrics_from_expected_labels_and_feedback(self):
+        emails = [
+            make_email(
+                id=1,
+                subject="KVKK başvurusu",
+                body="KVKK kapsamında kişisel verilerimin silinmesini talep ediyorum.",
+                expected_category="KVKK Başvurusu",
+                expected_department="Hukuk Müşavirliği",
+                expected_priority="Yüksek",
+                requires_human_review=True,
+            ),
+            make_email(
+                id=2,
+                subject="Portal giriş hatası",
+                body="Portal girişinde şifre hatası alıyorum.",
+                expected_category="Teknik Destek",
+                expected_department="Bilgi İşlem",
+                expected_priority="Normal",
+                requires_human_review=False,
+            ),
+        ]
+        feedbacks = [
+            {
+                "original_category": "Genel Başvuru",
+                "original_department": "Evrak Kayıt",
+                "original_priority": "Normal",
+                "corrected_category": "Teknik Destek",
+                "corrected_department": "Bilgi İşlem",
+                "corrected_priority": "Normal",
+                "is_misdirected": True,
+            }
+        ]
+
+        report = build_evaluation_report(emails, feedbacks)
+
+        self.assertEqual(report["summary"]["labeled_email_count"], 2)
+        self.assertEqual(report["summary"]["exact_match_rate"], 1)
+        self.assertEqual(report["summary"]["feedback_count"], 1)
+        self.assertEqual(report["summary"]["misdirected_feedback_count"], 1)
+        self.assertEqual(report["category_performance"][0]["accuracy_rate"], 1)
 
 
 class SlaServiceTests(unittest.TestCase):

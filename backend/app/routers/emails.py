@@ -16,6 +16,7 @@ from app.services.classification_db_service import save_classification_result
 from app.services.email_analysis_service import analyze_email
 from app.services.information_extraction_service import extract_structured_information
 from app.services.evaluation_service import evaluate_classification
+from app.services.evaluation_report_service import get_evaluation_report
 from app.services.preprocessing_service import preprocess_email
 from app.services.email_processing_service import process_email_by_id
 from app.services.dashboard_service import (
@@ -766,6 +767,11 @@ def get_operational_dashboard(
     db: Session = Depends(get_db),
 ):
     return get_operational_dashboard_summary(db)
+
+
+@router.get("/evaluation/report")
+def get_model_evaluation_report(db: Session = Depends(get_db)):
+    return get_evaluation_report(db)
 
 
 @router.get("/reports/management")

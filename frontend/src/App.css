@@ -373,6 +373,100 @@ textarea {
   font-size: 16px;
 }
 
+.evaluation-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.compact-evaluation-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.evaluation-list {
+  display: grid;
+  gap: 10px;
+}
+
+.evaluation-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.evaluation-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.evaluation-row strong {
+  color: var(--brand-dark);
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.evaluation-row span {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.evaluation-row em {
+  border-radius: 999px;
+  background: var(--surface-soft);
+  color: var(--brand-dark);
+  padding: 5px 9px;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.evaluation-table {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.6fr) repeat(4, minmax(120px, 1fr));
+  overflow-x: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.evaluation-table > span {
+  border-bottom: 1px solid var(--line);
+  padding: 0 8px 8px;
+}
+
+.evaluation-table-row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  border-bottom: 1px solid var(--line);
+}
+
+.evaluation-table-row strong,
+.evaluation-table-row span {
+  padding: 10px 8px;
+}
+
+.evaluation-table-row strong {
+  color: var(--brand-dark);
+  overflow-wrap: anywhere;
+}
+
+.evaluation-table-row span {
+  color: var(--text);
+}
+
+.evaluation-table-empty {
+  grid-column: 1 / -1;
+  padding: 14px 8px 4px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
 .action-item {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
