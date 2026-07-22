@@ -360,6 +360,46 @@ function getAttachmentTextStatus(filename, attachmentTexts = []) {
   return attachmentText?.status || "Metin bekleniyor";
 }
 
+function getAttachmentFileTypeLabel(fileType) {
+  const labels = {
+    "Word Document": "Word belgesi",
+    Spreadsheet: "Excel / tablo",
+    PowerPoint: "PowerPoint",
+    "Image / Scanned Document": "Görsel / taranmış belge",
+    "Compressed Archive": "Sıkıştırılmış arşiv",
+    "Signed / Official Document": "E-imzalı / resmi belge",
+    Unknown: "Bilinmeyen tür",
+  };
+
+  return labels[fileType] || fileType || "-";
+}
+
+function buildAttachmentGateStats(attachmentAnalysis = {}, attachmentTexts = []) {
+  const attachments = attachmentAnalysis.attachments || [];
+  const extractedTextFilenames = new Set(
+    attachmentTexts
+      .filter((item) => item.extracted_text)
+      .map((item) => item.filename)
+  );
+
+  return {
+    total: attachmentAnalysis.attachment_count || attachments.length,
+    ocrRequired: attachments.filter((attachment) => attachment.ocr_required).length,
+    suspicious: attachments.filter(
+      (attachment) =>
+        attachment.malware_risk === "Şüpheli" ||
+        ["Kritik", "Yüksek"].includes(attachment.risk_level)
+    ).length,
+    personalData: attachments.filter(
+      (attachment) => attachment.contains_personal_data
+    ).length,
+    encrypted: attachments.filter((attachment) => attachment.is_encrypted).length,
+    extractedText: attachments.filter((attachment) =>
+      extractedTextFilenames.has(attachment.filename)
+    ).length,
+  };
+}
+
 function getRolePolicy(role) {
   return ROLE_OPTIONS.find((option) => option.role === role) || ROLE_OPTIONS[1];
 }
@@ -1170,6 +1210,10 @@ function App() {
   const extracted = details?.analysis?.extracted_information || {};
   const attachmentAnalysis = analysis?.attachment_analysis || {};
   const attachmentTexts = selectedEmail?.attachment_texts || [];
+  const attachmentGateStats = buildAttachmentGateStats(
+    attachmentAnalysis,
+    attachmentTexts
+  );
   const responseSuggestion =
     details?.responseSuggestion?.response_suggestion || {};
   const ticket = details?.ticket;
@@ -2255,27 +2299,41 @@ function App() {
 
                     {activeDetailTab === "attachments" && (
                       <section className="section-block first-section">
-                        <h3>Ek Dosya Analizi</h3>
-                        <form
-                          className="attachment-upload-form"
-                          onSubmit={handleAttachmentUpload}
-                        >
-                          <input
-                            type="file"
-                            accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.jpg,.jpeg,.png,.tiff,.bmp,.webp,.zip,.rar,.7z,.p7s,.asice,.mht,.txt"
-                            onChange={(event) =>
-                              setSelectedAttachmentFile(
-                                event.target.files?.[0] || null
-                              )
-                            }
-                          />
-                          <button
-                            disabled={!can("upload_attachment")}
-                            type="submit"
+                        <div className="attachment-section-header">
+                          <div>
+                            <h3>Ek Dosya Güvenlik Kapısı</h3>
+                            <span>
+                              Mail gövdesi yetersiz kaldığında karar ek dosya
+                              içeriğiyle desteklenir.
+                            </span>
+                          </div>
+                          <form
+                            className="attachment-upload-form"
+                            onSubmit={handleAttachmentUpload}
                           >
-                            Ek Yükle ve Oku
-                          </button>
-                        </form>
+                            <label className="file-picker">
+                              <input
+                                type="file"
+                                accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.jpg,.jpeg,.png,.tiff,.bmp,.webp,.zip,.rar,.7z,.p7s,.asice,.mht,.txt"
+                                onChange={(event) =>
+                                  setSelectedAttachmentFile(
+                                    event.target.files?.[0] || null
+                                  )
+                                }
+                              />
+                              <span>Dosya Seç</span>
+                              <strong>
+                                {selectedAttachmentFile?.name || "Dosya seçilmedi"}
+                              </strong>
+                            </label>
+                            <button
+                              disabled={!can("upload_attachment")}
+                              type="submit"
+                            >
+                              Ek Yükle ve Oku
+                            </button>
+                          </form>
+                        </div>
 
                         {!attachmentAnalysis.has_attachments ? (
                           <div className="attachment-empty-state">
@@ -2290,34 +2348,57 @@ function App() {
                           <>
                             <div className="attachment-summary-panel">
                               <div>
-                                <span>Dosya İnceleme Özeti</span>
+                                <span>Dosya inceleme özeti</span>
                                 <strong>{attachmentAnalysis.summary}</strong>
                               </div>
                               <div className="attachment-summary-grid">
                                 <Meta
-                                  label="Ek sayısı"
-                                  value={attachmentAnalysis.attachment_count}
+                                  label="Ek"
+                                  value={attachmentGateStats.total}
                                 />
                                 <Meta
                                   label="Genel risk"
                                   value={attachmentAnalysis.overall_risk_level}
                                 />
                                 <Meta
-                                  label="Evrak kaydı"
-                                  value={
-                                    attachmentAnalysis.requires_record
-                                      ? "Gerekli"
-                                      : "Gerekli değil"
-                                  }
+                                  label="OCR gereken"
+                                  value={attachmentGateStats.ocrRequired}
                                 />
                                 <Meta
-                                  label="İnsan onayı"
-                                  value={
-                                    attachmentAnalysis.requires_human_review
-                                      ? "Gerekli"
-                                      : "Gerekli değil"
-                                  }
+                                  label="Metin çıkarıldı"
+                                  value={attachmentGateStats.extractedText}
                                 />
+                                <Meta
+                                  label="Kişisel veri"
+                                  value={attachmentGateStats.personalData}
+                                />
+                                <Meta
+                                  label="Güvenlik uyarısı"
+                                  value={attachmentGateStats.suspicious}
+                                />
+                              </div>
+                            </div>
+
+                            <div className="attachment-gate-flow">
+                              <div>
+                                <span>1</span>
+                                <strong>Tür tespiti</strong>
+                                <p>PDF, Word, Excel, görsel, arşiv ve e-imzalı dosya ayrımı.</p>
+                              </div>
+                              <div>
+                                <span>2</span>
+                                <strong>Metin / OCR</strong>
+                                <p>Normal metin çıkarma veya taranmış belge için OCR kararı.</p>
+                              </div>
+                              <div>
+                                <span>3</span>
+                                <strong>Güvenlik</strong>
+                                <p>Antivirüs simülasyonu, şifreli dosya ve arşiv uyarıları.</p>
+                              </div>
+                              <div>
+                                <span>4</span>
+                                <strong>Sınıflandırma etkisi</strong>
+                                <p>Konu, kişi, tarih ve evrak göstergeleri karar riskine eklenir.</p>
                               </div>
                             </div>
 
@@ -2332,7 +2413,9 @@ function App() {
                                   >
                                     <div className="attachment-card-header">
                                       <div>
-                                        <span>{attachment.file_type}</span>
+                                        <span>
+                                          {getAttachmentFileTypeLabel(attachment.file_type)}
+                                        </span>
                                         <h4>{attachment.filename}</h4>
                                       </div>
                                       <strong>{attachment.risk_level}</strong>
@@ -2357,6 +2440,10 @@ function App() {
                                       <Meta
                                         label="Güvenlik"
                                         value={`${attachment.security_scan_status} / ${attachment.malware_risk}`}
+                                      />
+                                      <Meta
+                                        label="Şifreli dosya"
+                                        value={attachment.is_encrypted ? "Uyarı var" : "Yok"}
                                       />
                                       <Meta
                                         label="Kişisel veri"
@@ -2392,6 +2479,14 @@ function App() {
                                       <TextBlock
                                         title="Güvenlik uyarısı"
                                         text={attachment.security_warnings?.join(" ")}
+                                      />
+                                      <TextBlock
+                                        title="Risk gerekçesi"
+                                        text={attachment.risk_reasons?.join(" ")}
+                                      />
+                                      <TextBlock
+                                        title="OCR kararı"
+                                        text={attachment.ocr_reason}
                                       />
                                     </div>
 
@@ -2968,10 +3063,12 @@ function IntegrationCard({ integration, onTest, testDisabled }) {
 }
 
 function Meta({ label, value }) {
+  const displayValue = value === 0 ? 0 : value || "-";
+
   return (
     <div className="meta-item">
       <span>{label}</span>
-      <strong>{value || "-"}</strong>
+      <strong>{displayValue}</strong>
     </div>
   );
 }

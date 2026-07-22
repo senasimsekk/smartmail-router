@@ -1547,6 +1547,74 @@ textarea {
   margin-bottom: 12px;
 }
 
+.attachment-section-header {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(360px, 1fr);
+  gap: 14px;
+  align-items: start;
+  margin-bottom: 14px;
+}
+
+.attachment-section-header h3 {
+  margin: 0;
+  color: var(--brand-dark);
+}
+
+.attachment-section-header span {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.attachment-section-header .attachment-upload-form {
+  margin-bottom: 0;
+}
+
+.file-picker {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.file-picker input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.file-picker span {
+  display: inline-flex;
+  align-items: center;
+  align-self: stretch;
+  margin: 0;
+  background: var(--surface-soft);
+  color: var(--brand-dark);
+  padding: 0 12px;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.file-picker strong {
+  min-width: 0;
+  color: var(--muted);
+  padding: 0 12px;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .attachment-empty-state {
   display: grid;
   gap: 6px;
@@ -1593,7 +1661,7 @@ textarea {
 .attachment-summary-grid,
 .attachment-status-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
   gap: 10px;
 }
 
@@ -1601,6 +1669,47 @@ textarea {
 .attachment-status-grid .meta-item {
   min-height: 66px;
   background: #ffffff;
+}
+
+.attachment-gate-flow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.attachment-gate-flow > div {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.attachment-gate-flow span {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: #fff2f1;
+  color: var(--brand);
+  font-weight: 800;
+}
+
+.attachment-gate-flow strong {
+  color: var(--brand-dark);
+  font-size: 13px;
+}
+
+.attachment-gate-flow p {
+  grid-column: 2;
+  margin: -2px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .attachment-card-list {
@@ -2057,6 +2166,14 @@ textarea {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .attachment-section-header {
+    grid-template-columns: 1fr;
+  }
+
+  .attachment-gate-flow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .report-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2137,6 +2254,7 @@ textarea {
   .attachment-summary-grid,
   .attachment-status-grid,
   .attachment-detail-grid,
+  .attachment-gate-flow,
   .report-grid,
   .integration-summary-grid,
   .integration-readiness,
@@ -2150,6 +2268,7 @@ textarea {
   .integration-meta-grid,
   .preprocess-grid,
   .attachment-upload-form,
+  .attachment-section-header,
   .correction-form,
   .training-summary {
     grid-template-columns: 1fr;

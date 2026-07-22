@@ -132,11 +132,44 @@ class EmailAnalysisServiceTests(unittest.TestCase):
 
         summary = generate_summary(email, classification)
 
-        self.assertIn("Kişisel verilerin silinmesi talebi", summary)
+        self.assertIn("kişisel verilerin silinmesi talebi", summary)
         self.assertIn("başvuru numarası", summary)
         self.assertIn("16/07/2026", summary)
         self.assertIn("kvkk-dilekce.pdf", summary)
         self.assertIn("Hukuk Müşavirliği", summary)
+
+    def test_summary_uses_attachment_text_when_body_only_points_to_attachment(self):
+        email = make_email(
+            subject="Mahkeme tebligatı",
+            body="Merhaba, tebligat yazısı ekte sunulmuştur.",
+            has_attachment=True,
+            attachment_names=["uyap-tebligat.pdf"],
+            attachment_texts=[
+                {
+                    "filename": "uyap-tebligat.pdf",
+                    "extracted_text": (
+                        "Ankara 4. İdare Mahkemesi tarafından gönderilen tebligatta "
+                        "2026/184 E. sayılı dosya için savunma verilmesi istenmektedir."
+                    ),
+                }
+            ],
+        )
+        classification = {
+            "category": "Hukuki Tebligat",
+            "department": "Evrak Kayıt",
+            "priority": "Kritik",
+            "requires_human_review": True,
+            "confidence_score": 0.93,
+            "matched_keywords": ["mahkeme", "tebligat"],
+        }
+
+        summary = generate_summary(email, classification)
+
+        self.assertIn("Bağlam sinyali", summary)
+        self.assertIn("uyap-tebligat.pdf", summary)
+        self.assertIn("Ankara 4. İdare Mahkemesi", summary)
+        self.assertIn("2026/184", summary)
+        self.assertIn("ek analizi karar için belirleyici olabilir", summary)
 
 
 class AiServiceTests(unittest.TestCase):

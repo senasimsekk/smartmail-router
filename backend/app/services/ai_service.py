@@ -5,9 +5,9 @@ import urllib.error
 import urllib.request
 
 from app.services.classification_service import normalize_text
-from app.services.email_analysis_service import generate_summary
 from app.services.information_extraction_service import extract_structured_information
 from app.services.preprocessing_service import build_classification_text
+from app.services.summary_service import generate_summary
 
 
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
