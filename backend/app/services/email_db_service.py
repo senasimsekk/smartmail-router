@@ -1,4 +1,5 @@
 from app.models.email import Email
+from app.services.mail_connector_service import get_mail_connector_overview
 
 
 def email_to_dict(email: Email) -> dict:
@@ -109,4 +110,5 @@ def get_email_ingestion_overview(db) -> dict:
         "supported_sources": SUPPORTED_EMAIL_SOURCES,
         "mailbox_statistics": mailbox_statistics,
         "total_email_count": total_email_count,
+        "connectors": get_mail_connector_overview(),
     }

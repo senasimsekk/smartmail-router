@@ -178,9 +178,17 @@ const LOG_DETAIL_LABELS = {
     "Eğitilebilir e-posta sınıflandırma modeli eğitildi.",
   "Synthetic mailbox was synchronized.":
     "Sentetik posta kutusu senkronize edildi.",
+  "Mailbox synchronized successfully.":
+    "Posta kutusu connector üzerinden senkronize edildi.",
   "Ticket record was created or updated for the email.":
     "E-posta için evrak/talep kaydı oluşturuldu veya güncellendi.",
   "Ticket record was updated.": "Evrak/talep kaydı güncellendi.",
+};
+
+const CONNECTOR_STATUS_LABELS = {
+  ready: "Hazır",
+  planned: "Planlandı",
+  configuration_required: "Konfigürasyon gerekli",
 };
 
 const ACTOR_LABELS = {
@@ -604,6 +612,7 @@ function App() {
   const [managementReport, setManagementReport] = useState(null);
   const [evaluationReport, setEvaluationReport] = useState(null);
   const [integrationOverview, setIntegrationOverview] = useState(null);
+  const [ingestionOverview, setIngestionOverview] = useState(null);
   const [pendingReview, setPendingReview] = useState([]);
   const [feedbackData, setFeedbackData] = useState({
     feedback_count: 0,
@@ -700,6 +709,7 @@ function App() {
         reportData,
         evaluationData,
         integrationData,
+        ingestionData,
         pendingData,
         feedbackResult,
         trainingResult,
@@ -711,6 +721,7 @@ function App() {
           request("/emails/reports/management"),
           request("/emails/evaluation/report"),
           request("/emails/integrations/overview"),
+          request("/emails/ingestion/overview"),
           request("/emails/review/pending"),
           request("/emails/feedback/all"),
           request("/emails/feedback/training-data"),
@@ -722,6 +733,7 @@ function App() {
       setManagementReport(reportData);
       setEvaluationReport(evaluationData);
       setIntegrationOverview(integrationData);
+      setIngestionOverview(ingestionData);
       setPendingReview(pendingData.pending_emails || []);
       setFeedbackData(feedbackResult);
       setTrainingData(trainingResult);
@@ -974,6 +986,7 @@ function App() {
         method: "POST",
         body: JSON.stringify({
           source_mailbox: "webmaster@rekabet.gov.tr",
+          connector_id: "synthetic_demo",
           limit: 5,
           actor_role: activeRole,
           process_after_import: true,
@@ -2722,8 +2735,8 @@ function App() {
           <div className="ingestion-header">
             <div>
               <h2>E-posta Alma</h2>
-              <span>webmaster@rekabet.gov.tr ortak kutusu</span>
-            </div>
+            <span>webmaster@rekabet.gov.tr ortak kutusu</span>
+          </div>
             <button
               className="secondary-button"
               disabled={!can("import_email")}
@@ -2732,6 +2745,28 @@ function App() {
             >
               Posta Kutusunu Senkronize Et
             </button>
+          </div>
+
+          <div className="connector-overview">
+            {(ingestionOverview?.connectors || []).map((connector) => (
+              <article
+                className={`connector-card ${connector.status}`}
+                key={connector.connector_id}
+              >
+                <div>
+                  <strong>{connector.name}</strong>
+                  <span>{connector.source_type}</span>
+                </div>
+                <p>{connector.next_step}</p>
+                <div className="connector-card-footer">
+                  <span>{connector.mode}</span>
+                  <strong>
+                    {CONNECTOR_STATUS_LABELS[connector.status] ||
+                      connector.status}
+                  </strong>
+                </div>
+              </article>
+            ))}
           </div>
 
           <form onSubmit={handleImportSubmit}>

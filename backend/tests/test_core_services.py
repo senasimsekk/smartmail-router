@@ -23,6 +23,12 @@ from app.services.integration_service import (
     INTEGRATION_CATALOG,
     build_integration_status,
 )
+from app.services.mail_connector_service import (
+    SyntheticMailboxConnector,
+    build_connector,
+    get_mail_connector_overview,
+    normalize_connector_message,
+)
 from app.services.preprocessing_service import preprocess_email
 from app.services.sla_service import calculate_sla
 from app.services.ticket_service import build_record_number, derive_ticket_status
@@ -437,6 +443,46 @@ class EmailIngestionServiceTests(unittest.TestCase):
 
     def test_normalizes_empty_attachment_names(self):
         self.assertEqual(normalize_attachment_names(None), [])
+
+    def test_synthetic_connector_filters_webmaster_mailbox(self):
+        connector = SyntheticMailboxConnector("webmaster@rekabet.gov.tr")
+
+        messages = connector.fetch_messages(limit=3)
+
+        self.assertEqual(len(messages), 3)
+        self.assertTrue(
+            all(message["source_mailbox"] == "webmaster@rekabet.gov.tr" for message in messages)
+        )
+        self.assertIn("subject", messages[0])
+
+    def test_planned_connector_reports_required_configuration(self):
+        connector = build_connector("gmail", "webmaster@rekabet.gov.tr")
+
+        result = connector.test_connection()
+
+        self.assertEqual(result["status"], "configuration_required")
+        self.assertIn("OAuth client id", result["required_settings"])
+
+    def test_connector_message_normalization_infers_attachment_flag(self):
+        result = normalize_connector_message(
+            {
+                "subject": "Ekli başvuru",
+                "sender": "test@example.com",
+                "body": "Ekte sunulmuştur.",
+                "attachment_names": ["basvuru.pdf"],
+            },
+            "webmaster@rekabet.gov.tr",
+        )
+
+        self.assertTrue(result["has_attachment"])
+        self.assertEqual(result["source_mailbox"], "webmaster@rekabet.gov.tr")
+
+    def test_connector_overview_marks_demo_ready(self):
+        overview = get_mail_connector_overview()
+        statuses = {connector["connector_id"]: connector["status"] for connector in overview}
+
+        self.assertEqual(statuses["synthetic_demo"], "ready")
+        self.assertEqual(statuses["imap"], "planned")
 
 
 class PreprocessingServiceTests(unittest.TestCase):

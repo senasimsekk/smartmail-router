@@ -1,24 +1,20 @@
-import json
-from pathlib import Path
-
 from sqlalchemy.orm import Session  
 
 from app.models.email import Email  
 from app.services.email_db_service import email_to_dict
 from app.services.email_processing_service import process_email_by_id
+from app.services.mail_connector_service import (
+    SYNTHETIC_EMAILS_FILE,
+    build_connector,
+)
 from app.services.system_log_service import create_system_log
-
-
-PROJECT_DIR = Path(__file__).resolve().parents[3]
-SYNTHETIC_EMAILS_FILE = PROJECT_DIR / "data" / "synthetic_emails.json"
 
 
 def load_synthetic_mailbox_emails() -> list[dict]:
     if not SYNTHETIC_EMAILS_FILE.exists():
         raise FileNotFoundError(f"Dataset not found: {SYNTHETIC_EMAILS_FILE}")
 
-    with open(SYNTHETIC_EMAILS_FILE, "r", encoding="utf-8") as file:
-        return json.load(file)
+    return build_connector("synthetic_demo", "webmaster@rekabet.gov.tr").load_messages()
 
 
 def normalize_attachment_names(attachment_names: list[str] | None) -> list[str]:
@@ -57,6 +53,7 @@ def create_email_from_manual_import(
         source_mailbox: str = "webmaster@rekabet.gov.tr",
         has_attachment: bool = False,
         attachment_names: list[str] | None = None,
+        attachment_texts: list[dict] | None = None,
         expected_category: str | None = None,
         expected_department: str | None = None,
         expected_priority: str | None = None,
@@ -72,6 +69,7 @@ def create_email_from_manual_import(
         source_mailbox=source_mailbox,
         has_attachment=has_attachment,
         attachment_names=attachment_names,
+        attachment_texts=attachment_texts or [],
         expected_category=expected_category,
         expected_department=expected_department,
         expected_priority=expected_priority,
@@ -97,18 +95,15 @@ def create_email_from_manual_import(
     return email_to_dict(new_email)
 
 
-def sync_synthetic_mailbox(
+def sync_mailbox_from_connector(
     db: Session,
+    connector_id: str = "synthetic_demo",
     source_mailbox: str = "webmaster@rekabet.gov.tr",
     limit: int = 5,
     process_after_import: bool = True,
 ) -> dict:
-    synthetic_emails = load_synthetic_mailbox_emails()
-    mailbox_candidates = [
-        email_data
-        for email_data in synthetic_emails
-        if email_data.get("source_mailbox") == source_mailbox
-    ]
+    connector = build_connector(connector_id, source_mailbox)
+    mailbox_candidates = connector.fetch_messages(limit=limit)
 
     imported_emails = []
     processed_results = []
@@ -135,6 +130,7 @@ def sync_synthetic_mailbox(
             source_mailbox=email_data.get("source_mailbox", source_mailbox),
             has_attachment=email_data.get("has_attachment", False),
             attachment_names=email_data.get("attachment_names", []),
+            attachment_texts=email_data.get("attachment_texts", []),
             expected_category=email_data.get("expected_category"),
             expected_department=email_data.get("expected_department"),
             expected_priority=email_data.get("expected_priority"),
@@ -156,6 +152,8 @@ def sync_synthetic_mailbox(
         action_detail="Synthetic mailbox was synchronized.",
         actor="mailbox_sync",
         extra_data={
+            "connector_id": connector.config.connector_id,
+            "connector_name": connector.config.name,
             "source_mailbox": source_mailbox,
             "limit": limit,
             "imported_count": len(imported_emails),
@@ -165,7 +163,14 @@ def sync_synthetic_mailbox(
     )
 
     return {
-        "message": "Synthetic mailbox synchronized successfully.",
+        "message": "Mailbox synchronized successfully.",
+        "connector": {
+            "connector_id": connector.config.connector_id,
+            "name": connector.config.name,
+            "source_type": connector.config.source_type,
+            "mode": connector.config.mode,
+            "status": connector.config.status,
+        },
         "source_mailbox": source_mailbox,
         "candidate_count": len(mailbox_candidates),
         "imported_count": len(imported_emails),
@@ -173,3 +178,18 @@ def sync_synthetic_mailbox(
         "imported_emails": imported_emails,
         "processing_results": processed_results,
     }
+
+
+def sync_synthetic_mailbox(
+    db: Session,
+    source_mailbox: str = "webmaster@rekabet.gov.tr",
+    limit: int = 5,
+    process_after_import: bool = True,
+) -> dict:
+    return sync_mailbox_from_connector(
+        db=db,
+        connector_id="synthetic_demo",
+        source_mailbox=source_mailbox,
+        limit=limit,
+        process_after_import=process_after_import,
+    )

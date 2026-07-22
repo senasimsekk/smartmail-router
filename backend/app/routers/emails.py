@@ -7,7 +7,7 @@ from app.database import get_db
 from collections import Counter
 from app.services.email_ingestion_service import (
     create_email_from_manual_import,
-    sync_synthetic_mailbox,
+    sync_mailbox_from_connector,
 )
 from app.services.response_suggestion_service import suggest_email_response
 from app.services.ai_service import analyze_email_with_mock_ai
@@ -97,6 +97,7 @@ class ManualEmailImportRequest(BaseModel):
 
 
 class MailboxSyncRequest(BaseModel):
+    connector_id: str = "synthetic_demo"
     source_mailbox: str = "webmaster@rekabet.gov.tr"
     limit: int = Field(default=5, ge=1, le=50)
     actor_role: str = "operator"
@@ -683,14 +684,17 @@ def sync_mailbox(
     require_permission(request.actor_role, "import_email")
 
     try:
-        return sync_synthetic_mailbox(
+        return sync_mailbox_from_connector(
             db=db,
+            connector_id=request.connector_id,
             source_mailbox=request.source_mailbox,
             limit=request.limit,
             process_after_import=request.process_after_import,
         )
     except FileNotFoundError as error:
         raise HTTPException(status_code=500, detail=str(error)) from error
+    except (NotImplementedError, ValueError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @router.post("/{email_id:int}/process")

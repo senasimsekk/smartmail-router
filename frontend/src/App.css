@@ -1955,6 +1955,61 @@ textarea {
   white-space: nowrap;
 }
 
+.connector-overview {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.connector-card {
+  display: grid;
+  gap: 10px;
+  min-height: 150px;
+  border: 1px solid var(--line);
+  border-top: 4px solid #c6ccd6;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 14px;
+}
+
+.connector-card.ready {
+  border-top-color: var(--success);
+}
+
+.connector-card.planned {
+  border-top-color: var(--warning);
+}
+
+.connector-card strong {
+  display: block;
+  color: var(--brand-dark);
+  font-size: 14px;
+}
+
+.connector-card span,
+.connector-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.connector-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.connector-card-footer strong {
+  color: var(--brand-green);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .import-panel form h3 {
   font-size: 16px;
 }
@@ -2219,6 +2274,10 @@ textarea {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .connector-overview {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .import-panel h2 {
     grid-column: 1 / -1;
   }
@@ -2244,6 +2303,10 @@ textarea {
   .ingestion-header {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .connector-overview {
+    grid-template-columns: 1fr;
   }
 
   .metrics-grid,
