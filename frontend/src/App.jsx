@@ -121,6 +121,7 @@ const DETAIL_TABS = [
 
 const PAGE_TABS = [
   { value: "operation", label: "Operasyon" },
+  { value: "pipeline", label: "İşlem Hattı" },
   { value: "reports", label: "Raporlama" },
   { value: "evaluation", label: "Değerlendirme" },
   { value: "integrations", label: "Entegrasyonlar" },
@@ -603,6 +604,204 @@ function buildWorkflowGraph(email, classification, analysis, attachmentAnalysis)
   return { nodes, edges };
 }
 
+function buildPipelineGraph(pipeline) {
+  const steps = pipeline?.steps || [];
+  const edges = pipeline?.edges || [];
+
+  return {
+    nodes: steps.map((step, index) => ({
+      id: step.id,
+      position: {
+        x: index * 215,
+        y: ["review", "warning"].includes(step.status) ? 0 : 80,
+      },
+      sourcePosition: Position.Right,
+      targetPosition: Position.Left,
+      className: `workflow-node ${getPipelineNodeClass(step.status)}`,
+      data: {
+        label: (
+          <div>
+            <strong>{step.title}</strong>
+            <span>{step.status_label}</span>
+          </div>
+        ),
+      },
+    })),
+    edges: edges.map((edge) => ({
+      id: `${edge.source}-${edge.target}`,
+      source: edge.source,
+      target: edge.target,
+      type: "smoothstep",
+      animated: true,
+      markerEnd: {
+        type: MarkerType.ArrowClosed,
+        color: "#111827",
+      },
+      style: {
+        stroke: "#111827",
+        strokeWidth: 2,
+      },
+    })),
+  };
+}
+
+function getPipelineNodeClass(status) {
+  if (status === "completed") {
+    return "complete";
+  }
+
+  if (status === "review" || status === "warning") {
+    return "review";
+  }
+
+  if (status === "skipped" || status === "waiting") {
+    return "waiting";
+  }
+
+  return "active";
+}
+
+function createFallbackPipelineStep(id, order, title, status, detail, evidence = []) {
+  const labels = {
+    completed: "Tamamlandı",
+    active: "İşlemde",
+    review: "İnceleme gerekli",
+    warning: "Uyarı",
+    waiting: "Bekliyor",
+    skipped: "Atlandı",
+  };
+
+  return {
+    id,
+    order,
+    title,
+    status,
+    status_label: labels[status] || status,
+    detail,
+    evidence,
+  };
+}
+
+function buildFallbackPipeline(email, classification, analysis, preprocessing, ticket) {
+  if (!email || !classification?.category || !analysis?.summary) {
+    return null;
+  }
+
+  const hasAttachment = Boolean(email.has_attachment);
+  const attachmentAnalysis = analysis.attachment_analysis || {};
+  const needsReview =
+    Boolean(classification.requires_human_review) ||
+    email.routing_status === "Pending Review";
+  const isRouted = ["Routed", "Approved", "Corrected"].includes(
+    email.routing_status
+  );
+  const classificationStatus = isRouted || !needsReview ? "completed" : "review";
+
+  const steps = [
+    createFallbackPipelineStep(
+      "received",
+      1,
+      "E-posta Alındı",
+      "completed",
+      "E-posta ortak posta kutusundan sisteme alındı.",
+      [email.source_mailbox]
+    ),
+    createFallbackPipelineStep(
+      "preprocessing",
+      2,
+      "Ön İşleme",
+      "completed",
+      "Gövde, imza, footer ve cevap zinciri ayrıştırıldı.",
+      [`Dil: ${preprocessing.language || "Bilinmiyor"}`]
+    ),
+    createFallbackPipelineStep(
+      "attachments",
+      3,
+      "Ek Analizi",
+      hasAttachment ? "completed" : "skipped",
+      hasAttachment
+        ? `${attachmentAnalysis.attachment_count || 0} ek dosya incelendi.`
+        : "Ek dosya bulunmadığı için adım atlandı.",
+      hasAttachment ? [`Risk: ${attachmentAnalysis.overall_risk_level || "Düşük"}`] : []
+    ),
+    createFallbackPipelineStep(
+      "security",
+      4,
+      "Güvenlik Kontrolü",
+      hasAttachment ? "completed" : "skipped",
+      hasAttachment
+        ? "Ekler dosya türü, şifre ve kişisel veri sinyalleriyle kontrol edildi."
+        : "Ek olmadığı için güvenlik kontrolü atlandı."
+    ),
+    createFallbackPipelineStep(
+      "classification",
+      5,
+      "Sınıflandırma",
+      classificationStatus,
+      `${classification.category} kategorisi için ${classification.department} önerildi.`,
+      [`Güven: ${formatPercent(classification.confidence_score)}`]
+    ),
+    createFallbackPipelineStep(
+      "summary",
+      6,
+      "Özetleme",
+      "completed",
+      "Mail gövdesi ve ek sinyallerinden karar destek özeti üretildi.",
+      [analysis.summary.slice(0, 180)]
+    ),
+    createFallbackPipelineStep(
+      "routing",
+      7,
+      "Yönlendirme",
+      isRouted ? "completed" : needsReview ? "review" : "active",
+      analysis.routing_decision?.routing_type || "Yönlendirme kararı hazırlanıyor.",
+      [classification.department]
+    ),
+    createFallbackPipelineStep(
+      "ticket",
+      8,
+      "Evrak/Talep Kaydı",
+      ticket ? "completed" : "waiting",
+      ticket
+        ? `${ticket.record_number} numaralı kayıt oluşturuldu.`
+        : "Kayıt ihtiyacı yönlendirme kararına göre belirlenir."
+    ),
+    createFallbackPipelineStep(
+      "notification",
+      9,
+      "Bildirim",
+      isRouted ? "completed" : "waiting",
+      isRouted
+        ? "İlgili birim bilgilendirme adımına hazır."
+        : "Bildirim için yönlendirme tamamlanmalı."
+    ),
+  ];
+  const completedCount = steps.filter((step) =>
+    ["completed", "skipped"].includes(step.status)
+  ).length;
+  const attentionCount = steps.filter((step) =>
+    ["review", "warning", "active"].includes(step.status)
+  ).length;
+
+  return {
+    summary: {
+      step_count: steps.length,
+      completed_count: completedCount,
+      attention_count: attentionCount,
+      progress_percent: completedCount / steps.length,
+      current_step:
+        steps.find((step) =>
+          ["review", "warning", "active", "waiting"].includes(step.status)
+        ) || steps[steps.length - 1],
+    },
+    steps,
+    edges: steps.slice(0, -1).map((step, index) => ({
+      source: step.id,
+      target: steps[index + 1].id,
+    })),
+  };
+}
+
 function App() {
   const [emails, setEmails] = useState([]);
   const [selectedEmailId, setSelectedEmailId] = useState(null);
@@ -764,7 +963,13 @@ function App() {
     setActionMessage("");
 
     try {
-      const [analysis, preprocessing, aiAnalysis, responseSuggestion, logData] =
+      const [
+        analysis,
+        preprocessing,
+        aiAnalysis,
+        responseSuggestion,
+        logData,
+      ] =
         await Promise.all([
           request(`/emails/${emailId}/analysis`),
           request(`/emails/${emailId}/preprocess`),
@@ -775,6 +980,7 @@ function App() {
 
       let modelPrediction = null;
       let ticket = null;
+      let pipelineData = null;
 
       try {
         modelPrediction = await request(`/emails/${emailId}/model-prediction`);
@@ -789,11 +995,18 @@ function App() {
         ticket = null;
       }
 
+      try {
+        pipelineData = await request(`/emails/${emailId}/pipeline`);
+      } catch {
+        pipelineData = null;
+      }
+
       setDetails({
         analysis,
         preprocessing,
         aiAnalysis,
         responseSuggestion,
+        pipeline: pipelineData,
         modelPrediction,
         ticket,
       });
@@ -1223,6 +1436,16 @@ function App() {
   const extracted = details?.analysis?.extracted_information || {};
   const attachmentAnalysis = analysis?.attachment_analysis || {};
   const attachmentTexts = selectedEmail?.attachment_texts || [];
+  const pipeline =
+    details?.pipeline?.pipeline ||
+    buildFallbackPipeline(
+      selectedEmail,
+      classification,
+      analysis,
+      preprocessing,
+      details?.ticket
+    );
+  const pipelineSummary = pipeline?.summary || {};
   const attachmentGateStats = buildAttachmentGateStats(
     attachmentAnalysis,
     attachmentTexts
@@ -1288,6 +1511,7 @@ function App() {
     analysis,
     attachmentAnalysis
   );
+  const pipelineGraph = buildPipelineGraph(pipeline);
 
   if (loading) {
     return <div className="page-loading">Panel yükleniyor...</div>;
@@ -1370,6 +1594,151 @@ function App() {
               tone="success"
             />
           </div>
+        </section>
+      )}
+
+      {activePage === "pipeline" && (
+        <section className="pipeline-page page-panel" aria-label="İşlem hattı">
+          <div className="panel-heading compact-heading">
+            <div>
+              <p className="eyebrow">Pipeline Servisi</p>
+              <h2>E-posta İşlem Hattı</h2>
+            </div>
+            <label className="pipeline-selector">
+              Kayıt
+              <select
+                value={selectedEmailId || ""}
+                onChange={(event) =>
+                  setSelectedEmailId(Number(event.target.value) || null)
+                }
+              >
+                {(emails || []).map((email) => (
+                  <option key={email.id} value={email.id}>
+                    {email.subject}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {!selectedEmail && (
+            <div className="empty-state">
+              <h2>Pipeline görüntülenecek kayıt yok</h2>
+              <p>Önce bir e-posta içe aktar veya gelen kayıt seç.</p>
+            </div>
+          )}
+
+          {selectedEmail && (
+            <>
+              <div className="pipeline-overview-card">
+                <div>
+                  <span>Seçili e-posta</span>
+                  <strong>{selectedEmail.subject}</strong>
+                  <p>{selectedEmail.sender}</p>
+                </div>
+                <div className="pipeline-overview-meta">
+                  <Meta label="Kaynak kutu" value={selectedEmail.source_mailbox} />
+                  <Meta
+                    label="Durum"
+                    value={getStatusLabel(selectedEmail.routing_status)}
+                  />
+                  <Meta
+                    label="Geçerli adım"
+                    value={pipelineSummary.current_step?.title || "Yükleniyor"}
+                  />
+                </div>
+              </div>
+
+              <div className="pipeline-summary-grid">
+                <Metric
+                  label="Tamamlanan adım"
+                  value={
+                    pipeline
+                      ? `${pipelineSummary.completed_count}/${pipelineSummary.step_count}`
+                      : "Yükleniyor"
+                  }
+                  tone="success"
+                />
+                <Metric
+                  label="İlerleme"
+                  value={
+                    pipeline
+                      ? formatPercent(pipelineSummary.progress_percent)
+                      : "Yükleniyor"
+                  }
+                  tone="success"
+                />
+                <Metric
+                  label="Dikkat isteyen"
+                  value={pipeline ? pipelineSummary.attention_count : "Yükleniyor"}
+                  tone={pipelineSummary.attention_count ? "warning" : "success"}
+                />
+              </div>
+
+              {pipeline ? (
+                <>
+                  <div className="pipeline-strip">
+                    {pipeline.steps.map((step) => (
+                      <article className={`pipeline-strip-step ${step.status}`} key={step.id}>
+                        <span>{String(step.order).padStart(2, "0")}</span>
+                        <strong>{step.title}</strong>
+                        <em>{step.status_label}</em>
+                      </article>
+                    ))}
+                  </div>
+
+                  <div className="pipeline-content-grid">
+                    <div className="pipeline-step-grid">
+                      {pipeline.steps.map((step) => (
+                        <article
+                          className={`pipeline-step-card ${step.status}`}
+                          key={step.id}
+                        >
+                          <div className="pipeline-step-head">
+                            <span>{String(step.order).padStart(2, "0")}</span>
+                            <strong>{step.status_label}</strong>
+                          </div>
+                          <h3>{step.title}</h3>
+                          <p>{step.detail}</p>
+                          {step.evidence?.length > 0 && (
+                            <div className="pipeline-evidence">
+                              {step.evidence.map((item, index) => (
+                                <span key={`${step.id}-${index}`}>{item}</span>
+                              ))}
+                            </div>
+                          )}
+                          {step.action && (
+                            <div className="pipeline-action">{step.action}</div>
+                          )}
+                        </article>
+                      ))}
+                    </div>
+
+                    <div className="workflow-canvas pipeline-canvas">
+                      <ReactFlow
+                        nodes={pipelineGraph.nodes}
+                        edges={pipelineGraph.edges}
+                        fitView
+                        fitViewOptions={{ padding: 0.2 }}
+                        nodesDraggable={false}
+                        nodesConnectable={false}
+                        elementsSelectable={false}
+                        panOnScroll
+                        proOptions={{ hideAttribution: true }}
+                      >
+                        <Background gap={18} size={1} />
+                        <Controls showInteractive={false} />
+                      </ReactFlow>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="pipeline-loading-card">
+                  Pipeline verisi hazırlanıyor.
+                </div>
+              )}
+            </>
+          )}
         </section>
       )}
 

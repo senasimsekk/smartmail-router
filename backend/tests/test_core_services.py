@@ -29,6 +29,7 @@ from app.services.mail_connector_service import (
     get_mail_connector_overview,
     normalize_connector_message,
 )
+from app.services.pipeline_service import build_email_pipeline
 from app.services.preprocessing_service import preprocess_email
 from app.services.sla_service import calculate_sla
 from app.services.ticket_service import build_record_number, derive_ticket_status
@@ -343,6 +344,107 @@ class EmailProcessingServiceTests(unittest.TestCase):
 
         self.assertEqual(decision["routing_status"], "Pending Review")
         self.assertFalse(decision["auto_route"])
+
+
+class PipelineServiceTests(unittest.TestCase):
+    def test_builds_attention_pipeline_for_attachment_and_review_email(self):
+        email = make_email(
+            subject="Mahkeme tebligatı ekte",
+            body="Tebligat ekte sunulmuştur.",
+            has_attachment=True,
+            attachment_names=["uyap-tebligat.pdf"],
+            routing_status="Pending Review",
+        )
+        classification = {
+            "category": "Hukuki Tebligat",
+            "department": "Evrak Kayıt",
+            "priority": "Kritik",
+            "requires_human_review": True,
+            "confidence_score": 0.92,
+        }
+        analysis = {
+            "summary": "Tebligat için evrak kaydı ve insan onayı gerekir.",
+            "operation_type": "Evrak kaydı gerekiyor",
+            "suggested_action": "Operatör onayına gönder.",
+            "routing_decision": {
+                "primary_department": "Evrak Kayıt",
+                "routing_type": "Operatör onayı önerilir",
+            },
+            "attachment_analysis": {
+                "attachments": [
+                    {
+                        "risk_level": "Kritik",
+                        "requires_record": True,
+                        "requires_human_review": True,
+                        "security_warnings": ["Hukuki dosya kontrolü"],
+                        "malware_risk": "Düşük",
+                        "is_encrypted": False,
+                        "contains_personal_data": False,
+                    }
+                ],
+                "overall_risk_level": "Kritik",
+            },
+        }
+        preprocessing = {
+            "language": "Türkçe",
+            "signature": "",
+            "footer": "",
+            "previous_replies": [],
+            "attachments": {"all_names": ["uyap-tebligat.pdf"]},
+            "spam_or_automatic": {"is_spam_like": False},
+        }
+
+        pipeline = build_email_pipeline(
+            email=email,
+            classification=classification,
+            analysis=analysis,
+            preprocessing=preprocessing,
+            logs=[{"action_type": "EMAIL_IMPORTED"}],
+        )
+        statuses = {step["id"]: step["status"] for step in pipeline["steps"]}
+
+        self.assertEqual(pipeline["summary"]["step_count"], 9)
+        self.assertEqual(statuses["attachments"], "warning")
+        self.assertEqual(statuses["security"], "warning")
+        self.assertEqual(statuses["classification"], "review")
+        self.assertEqual(statuses["routing"], "review")
+        self.assertEqual(statuses["ticket"], "active")
+
+    def test_pipeline_skips_attachment_steps_when_no_attachment_exists(self):
+        email = make_email()
+        classification = {
+            "category": "Teknik Destek",
+            "department": "Bilgi İşlem",
+            "priority": "Normal",
+            "requires_human_review": False,
+            "confidence_score": 0.91,
+        }
+        analysis = {
+            "summary": "Portal giriş hatası için Bilgi İşlem yönlendirmesi önerildi.",
+            "operation_type": "Doğrudan yönlendirme",
+            "routing_decision": {
+                "primary_department": "Bilgi İşlem",
+                "routing_type": "Otomatik yönlendirme uygun",
+            },
+            "attachment_analysis": {"attachments": [], "overall_risk_level": "Düşük"},
+        }
+        preprocessing = {
+            "language": "Türkçe",
+            "attachments": {"all_names": []},
+            "spam_or_automatic": {"is_spam_like": False},
+        }
+
+        pipeline = build_email_pipeline(
+            email=email,
+            classification=classification,
+            analysis=analysis,
+            preprocessing=preprocessing,
+        )
+        statuses = {step["id"]: step["status"] for step in pipeline["steps"]}
+
+        self.assertEqual(statuses["attachments"], "skipped")
+        self.assertEqual(statuses["security"], "skipped")
+        self.assertGreaterEqual(pipeline["summary"]["progress_percent"], 0.5)
 
 
 class DashboardReportServiceTests(unittest.TestCase):

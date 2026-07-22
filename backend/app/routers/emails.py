@@ -27,6 +27,7 @@ from app.services.integration_service import (
     build_integration_overview,
     test_integration_connection,
 )
+from app.services.pipeline_service import build_email_pipeline
 from app.services.attachment_text_extraction_service import (
     save_attachment_and_extract_text,
 )
@@ -371,6 +372,35 @@ def get_response_suggestion(email_id: int, db: Session = Depends(get_db)):
         "risk_level": analysis["risk_level"],
         "operation_type": analysis["operation_type"],
         "response_suggestion": response_suggestion,
+    }
+
+
+@router.get("/{email_id:int}/pipeline")
+def get_email_pipeline(email_id: int, db: Session = Depends(get_db)):
+    email_record = get_email_by_id_from_db(db, email_id)
+
+    if email_record is None:
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    email = email_to_dict(email_record)
+    classification = classify_email(email)
+    analysis = analyze_email(email, classification)
+    preprocessing = preprocess_email(email)
+    logs = get_system_logs_by_email_id(db, email_id=email_id)
+    ticket_record = get_ticket_by_email_id(db, email_id)
+    ticket = ticket_to_dict(ticket_record) if ticket_record else None
+
+    return {
+        "email_id": email["id"],
+        "subject": email["subject"],
+        "pipeline": build_email_pipeline(
+            email=email,
+            classification=classification,
+            analysis=analysis,
+            preprocessing=preprocessing,
+            logs=logs,
+            ticket=ticket,
+        ),
     }
 @router.post("/{email_id:int}/feedback")
 def add_feedback_for_email(
