@@ -180,7 +180,7 @@ const LOG_DETAIL_LABELS = {
   "Synthetic mailbox was synchronized.":
     "Sentetik posta kutusu senkronize edildi.",
   "Mailbox synchronized successfully.":
-    "Posta kutusu connector üzerinden senkronize edildi.",
+    "Posta kutusu bağlayıcı üzerinden senkronize edildi.",
   "Ticket record was created or updated for the email.":
     "E-posta için evrak/talep kaydı oluşturuldu veya güncellendi.",
   "Ticket record was updated.": "Evrak/talep kaydı güncellendi.",
@@ -269,6 +269,14 @@ function formatPercent(value) {
   }
 
   return `${Math.round(value * 100)}%`;
+}
+
+function formatMailboxDisplay(mailbox) {
+  if (!mailbox) {
+    return "-";
+  }
+
+  return mailbox.replace("@rekabet.gov.tr", "");
 }
 
 function formatSeconds(value) {
@@ -602,63 +610,6 @@ function buildWorkflowGraph(email, classification, analysis, attachmentAnalysis)
   }));
 
   return { nodes, edges };
-}
-
-function buildPipelineGraph(pipeline) {
-  const steps = pipeline?.steps || [];
-  const edges = pipeline?.edges || [];
-
-  return {
-    nodes: steps.map((step, index) => ({
-      id: step.id,
-      position: {
-        x: index * 215,
-        y: ["review", "warning"].includes(step.status) ? 0 : 80,
-      },
-      sourcePosition: Position.Right,
-      targetPosition: Position.Left,
-      className: `workflow-node ${getPipelineNodeClass(step.status)}`,
-      data: {
-        label: (
-          <div>
-            <strong>{step.title}</strong>
-            <span>{step.status_label}</span>
-          </div>
-        ),
-      },
-    })),
-    edges: edges.map((edge) => ({
-      id: `${edge.source}-${edge.target}`,
-      source: edge.source,
-      target: edge.target,
-      type: "smoothstep",
-      animated: true,
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-        color: "#111827",
-      },
-      style: {
-        stroke: "#111827",
-        strokeWidth: 2,
-      },
-    })),
-  };
-}
-
-function getPipelineNodeClass(status) {
-  if (status === "completed") {
-    return "complete";
-  }
-
-  if (status === "review" || status === "warning") {
-    return "review";
-  }
-
-  if (status === "skipped" || status === "waiting") {
-    return "waiting";
-  }
-
-  return "active";
 }
 
 function createFallbackPipelineStep(id, order, title, status, detail, evidence = []) {
@@ -1511,7 +1462,6 @@ function App() {
     analysis,
     attachmentAnalysis
   );
-  const pipelineGraph = buildPipelineGraph(pipeline);
 
   if (loading) {
     return <div className="page-loading">Panel yükleniyor...</div>;
@@ -1601,7 +1551,7 @@ function App() {
         <section className="pipeline-page page-panel" aria-label="İşlem hattı">
           <div className="panel-heading compact-heading">
             <div>
-              <p className="eyebrow">Pipeline Servisi</p>
+              <p className="eyebrow">Süreç Takibi</p>
               <h2>E-posta İşlem Hattı</h2>
             </div>
             <label className="pipeline-selector">
@@ -1623,7 +1573,7 @@ function App() {
 
           {!selectedEmail && (
             <div className="empty-state">
-              <h2>Pipeline görüntülenecek kayıt yok</h2>
+              <h2>Süreç görüntülenecek kayıt yok</h2>
               <p>Önce bir e-posta içe aktar veya gelen kayıt seç.</p>
             </div>
           )}
@@ -1637,7 +1587,10 @@ function App() {
                   <p>{selectedEmail.sender}</p>
                 </div>
                 <div className="pipeline-overview-meta">
-                  <Meta label="Kaynak kutu" value={selectedEmail.source_mailbox} />
+                  <Meta
+                    label="Kaynak kutu"
+                    value={formatMailboxDisplay(selectedEmail.source_mailbox)}
+                  />
                   <Meta
                     label="Durum"
                     value={getStatusLabel(selectedEmail.routing_status)}
@@ -1687,54 +1640,35 @@ function App() {
                     ))}
                   </div>
 
-                  <div className="pipeline-content-grid">
-                    <div className="pipeline-step-grid">
-                      {pipeline.steps.map((step) => (
-                        <article
-                          className={`pipeline-step-card ${step.status}`}
-                          key={step.id}
-                        >
-                          <div className="pipeline-step-head">
-                            <span>{String(step.order).padStart(2, "0")}</span>
-                            <strong>{step.status_label}</strong>
-                          </div>
-                          <h3>{step.title}</h3>
-                          <p>{step.detail}</p>
-                          {step.evidence?.length > 0 && (
-                            <div className="pipeline-evidence">
-                              {step.evidence.map((item, index) => (
-                                <span key={`${step.id}-${index}`}>{item}</span>
-                              ))}
-                            </div>
-                          )}
-                          {step.action && (
-                            <div className="pipeline-action">{step.action}</div>
-                          )}
-                        </article>
-                      ))}
-                    </div>
-
-                    <div className="workflow-canvas pipeline-canvas">
-                      <ReactFlow
-                        nodes={pipelineGraph.nodes}
-                        edges={pipelineGraph.edges}
-                        fitView
-                        fitViewOptions={{ padding: 0.2 }}
-                        nodesDraggable={false}
-                        nodesConnectable={false}
-                        elementsSelectable={false}
-                        panOnScroll
-                        proOptions={{ hideAttribution: true }}
+                  <div className="pipeline-step-grid">
+                    {pipeline.steps.map((step) => (
+                      <article
+                        className={`pipeline-step-card ${step.status}`}
+                        key={step.id}
                       >
-                        <Background gap={18} size={1} />
-                        <Controls showInteractive={false} />
-                      </ReactFlow>
-                    </div>
+                        <div className="pipeline-step-head">
+                          <span>{String(step.order).padStart(2, "0")}</span>
+                          <strong>{step.status_label}</strong>
+                        </div>
+                        <h3>{step.title}</h3>
+                        <p>{step.detail}</p>
+                        {step.evidence?.length > 0 && (
+                          <div className="pipeline-evidence">
+                            {step.evidence.slice(0, 2).map((item, index) => (
+                              <span key={`${step.id}-${index}`}>{item}</span>
+                            ))}
+                          </div>
+                        )}
+                        {step.action && (
+                          <div className="pipeline-action">{step.action}</div>
+                        )}
+                      </article>
+                    ))}
                   </div>
                 </>
               ) : (
                 <div className="pipeline-loading-card">
-                  Pipeline verisi hazırlanıyor.
+                  Süreç verisi hazırlanıyor.
                 </div>
               )}
             </>
@@ -1782,7 +1716,7 @@ function App() {
             tone="success"
           />
           <ReportMetric
-            label="AI doğruluk oranı"
+            label="Yapay zeka doğruluğu"
             value={formatPercent(reportKpis.ai_accuracy_rate)}
             tone="success"
           />

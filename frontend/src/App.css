@@ -2310,20 +2310,9 @@ textarea {
   line-height: 1.25;
 }
 
-.pipeline-content-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
-  gap: 14px;
-  align-items: start;
-}
-
-.pipeline-canvas {
-  height: 300px;
-}
-
 .pipeline-step-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -2458,7 +2447,6 @@ textarea {
   .training-distribution-grid,
   .integration-card-grid,
   .pipeline-page,
-  .pipeline-content-grid,
   .pipeline-overview-card,
   .pipeline-step-grid {
     grid-template-columns: 1fr;

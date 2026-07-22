@@ -178,6 +178,47 @@ class EmailAnalysisServiceTests(unittest.TestCase):
         self.assertIn("2026/184", summary)
         self.assertIn("ek analizi karar için belirleyici olabilir", summary)
 
+    def test_summary_handles_large_attachment_text_with_chunked_evidence(self):
+        filler = (
+            "Genel değerlendirme bölümünde pazar yapısı ve önceki yazışmalar açıklanmaktadır. "
+            "Bu bölüm destekleyici bilgi niteliğindedir. "
+        )
+        long_attachment_text = (
+            "Başvuruda ilgili pazarda rekabet ihlali iddiası anlatılmaktadır. "
+            + filler * 8
+            + "Dosya numarası RK-2026-778 olan incelemede 12/07/2026 tarihli yazı "
+            "kapsamında şirketlerden savunma istenmektedir. "
+            + filler * 8
+            + "Konunun incelenmesini ve ilgili uzman daireye aktarılmasını talep ederiz."
+        )
+        email = make_email(
+            subject="Uzun ekli rekabet ihlali başvurusu",
+            body="Merhaba, ayrıntılı açıklamalar ekte sunulmuştur.",
+            has_attachment=True,
+            attachment_names=["uzun-inceleme.pdf"],
+            attachment_texts=[
+                {
+                    "filename": "uzun-inceleme.pdf",
+                    "extracted_text": long_attachment_text,
+                }
+            ],
+        )
+        classification = {
+            "category": "Şikayet",
+            "department": "İlgili Uzman Daire",
+            "priority": "Yüksek",
+            "requires_human_review": True,
+            "confidence_score": 0.89,
+            "matched_keywords": ["rekabet ihlali", "incelenmesini"],
+        }
+
+        summary = generate_summary(email, classification)
+
+        self.assertIn("Büyük ek metni parça bazlı özetlendi", summary)
+        self.assertIn("uzun-inceleme.pdf", summary)
+        self.assertIn("parça", summary)
+        self.assertIn("RK-2026-778", summary)
+
 
 class AiServiceTests(unittest.TestCase):
     def test_uses_demo_llm_fallback_without_openai_key(self):

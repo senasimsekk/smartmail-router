@@ -28,6 +28,9 @@ SUMMARY_STOP_WORDS = {
     "ve",
     "veya",
 }
+LARGE_ATTACHMENT_TEXT_THRESHOLD = 1200
+ATTACHMENT_CHUNK_CHAR_LIMIT = 900
+MAX_LARGE_ATTACHMENT_CHUNK_SUMMARIES = 3
 
 
 def contains_any(text: str, keywords: list[str]) -> bool:
@@ -203,27 +206,88 @@ def get_attachment_text_entries(email: dict) -> list[dict]:
             {
                 "filename": item.get("filename") or f"Ek {index}",
                 "text": extracted_text,
+                "is_large": len(extracted_text) >= LARGE_ATTACHMENT_TEXT_THRESHOLD,
             }
         )
 
     return entries
 
 
-def build_sentence_candidates(email: dict) -> list[dict]:
-    candidates = [
-        {"source": "mail", "filename": "", "sentence": sentence}
-        for sentence in split_summary_sentences(clean_email_body(email.get("body", "")))
-    ]
+def chunk_sentences_by_length(sentences: list[str], max_chars: int) -> list[str]:
+    chunks = []
+    current_chunk = []
+    current_length = 0
 
-    for attachment in get_attachment_text_entries(email):
-        candidates.extend(
+    for sentence in sentences:
+        sentence_length = len(sentence)
+
+        if current_chunk and current_length + sentence_length > max_chars:
+            chunks.append(" ".join(current_chunk))
+            current_chunk = []
+            current_length = 0
+
+        current_chunk.append(sentence)
+        current_length += sentence_length + 1
+
+    if current_chunk:
+        chunks.append(" ".join(current_chunk))
+
+    return chunks
+
+
+def build_attachment_sentence_candidates(attachment: dict) -> list[dict]:
+    sentences = split_summary_sentences(attachment["text"])
+
+    if not sentences:
+        return []
+
+    if not attachment["is_large"]:
+        return [
             {
                 "source": "attachment",
                 "filename": attachment["filename"],
                 "sentence": sentence,
+                "chunk_index": None,
+                "chunk_count": 1,
+                "is_large_attachment": False,
             }
-            for sentence in split_summary_sentences(attachment["text"])
-        )
+            for sentence in sentences
+        ]
+
+    chunks = chunk_sentences_by_length(sentences, ATTACHMENT_CHUNK_CHAR_LIMIT)
+    candidates = []
+
+    for chunk_index, chunk in enumerate(chunks, start=1):
+        for sentence in split_summary_sentences(chunk):
+            candidates.append(
+                {
+                    "source": "attachment",
+                    "filename": attachment["filename"],
+                    "sentence": sentence,
+                    "chunk_index": chunk_index,
+                    "chunk_count": len(chunks),
+                    "is_large_attachment": True,
+                }
+            )
+
+    return candidates
+
+
+def build_sentence_candidates(email: dict) -> list[dict]:
+    candidates = [
+        {
+            "source": "mail",
+            "filename": "",
+            "sentence": sentence,
+            "chunk_index": None,
+            "chunk_count": 1,
+            "is_large_attachment": False,
+        }
+        for sentence in split_summary_sentences(clean_email_body(email.get("body", "")))
+    ]
+
+    for attachment in get_attachment_text_entries(email):
+        candidates.extend(build_attachment_sentence_candidates(attachment))
 
     return candidates
 
@@ -308,20 +372,53 @@ def select_relevant_sentences(email: dict, classification: dict, max_sentences: 
     ]
     selected = []
     seen_sentences = set()
+    used_large_chunks = set()
 
     for candidate in sorted(scored_candidates, key=lambda item: item["score"], reverse=True):
         normalized_sentence = normalize_text(candidate["sentence"])
+        large_chunk_key = (
+            candidate["filename"],
+            candidate["chunk_index"],
+        )
 
         if normalized_sentence in seen_sentences:
+            continue
+
+        if (
+            candidate.get("is_large_attachment")
+            and large_chunk_key in used_large_chunks
+            and len(selected) < max_sentences
+        ):
             continue
 
         selected.append(candidate)
         seen_sentences.add(normalized_sentence)
 
+        if candidate.get("is_large_attachment"):
+            used_large_chunks.add(large_chunk_key)
+
         if len(selected) == max_sentences:
             break
 
     return selected
+
+
+def build_large_attachment_note(selected_sentences: list[dict]) -> str:
+    large_attachment_counts = {}
+
+    for item in selected_sentences:
+        if item.get("is_large_attachment"):
+            large_attachment_counts[item["filename"]] = item["chunk_count"]
+
+    if not large_attachment_counts:
+        return ""
+
+    notes = [
+        f"{filename} {chunk_count} parçaya ayrılarak tarandı"
+        for filename, chunk_count in large_attachment_counts.items()
+    ]
+
+    return f"Büyük ek metni parça bazlı özetlendi: {'; '.join(notes)}."
 
 
 def build_context_sentence(selected_sentences: list[dict]) -> str:
@@ -334,7 +431,12 @@ def build_context_sentence(selected_sentences: list[dict]) -> str:
         sentence = shorten_text(normalize_whitespace(item["sentence"]), 150)
 
         if item["source"] == "attachment":
-            fragments.append(f"{item['filename']} içinde \"{sentence}\"")
+            chunk_label = (
+                f" parça {item['chunk_index']}"
+                if item.get("is_large_attachment") and item.get("chunk_index")
+                else ""
+            )
+            fragments.append(f"{item['filename']}{chunk_label} içinde \"{sentence}\"")
         else:
             fragments.append(f"mail gövdesinde \"{sentence}\"")
 
@@ -355,7 +457,13 @@ def generate_summary(email: dict, classification: dict) -> str:
     entity_sentence = build_entity_sentence(extracted)
     attachment_sentence = build_attachment_sentence(email, extracted)
     message_signal = detect_message_signal(email)
-    context_sentence = build_context_sentence(select_relevant_sentences(email, classification))
+    selected_sentences = select_relevant_sentences(
+        email,
+        classification,
+        max_sentences=MAX_LARGE_ATTACHMENT_CHUNK_SUMMARIES,
+    )
+    large_attachment_note = build_large_attachment_note(selected_sentences)
+    context_sentence = build_context_sentence(selected_sentences)
 
     summary_parts = [
         (
@@ -369,6 +477,9 @@ def generate_summary(email: dict, classification: dict) -> str:
         summary_parts.append(entity_sentence)
 
     summary_parts.append(attachment_sentence)
+
+    if large_attachment_note:
+        summary_parts.append(large_attachment_note)
 
     if context_sentence:
         summary_parts.append(context_sentence)
