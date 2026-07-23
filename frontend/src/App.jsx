@@ -125,7 +125,6 @@ const PAGE_TABS = [
   { value: "pipeline", label: "İşlem Hattı" },
   { value: "reports", label: "Raporlama" },
   { value: "evaluation", label: "Değerlendirme" },
-  { value: "integrations", label: "Entegrasyonlar" },
   { value: "ingestion", label: "E-posta Alma" },
   { value: "training", label: "Model Eğitimi" },
 ];
@@ -158,7 +157,6 @@ const LOG_ACTION_LABELS = {
   MODEL_TRAINED: "Model eğitildi",
   TICKET_CREATED: "Evrak/talep kaydı oluşturuldu",
   TICKET_UPDATED: "Evrak/talep kaydı güncellendi",
-  INTEGRATION_TESTED: "Entegrasyon testi çalıştırıldı",
 };
 
 const LOG_DETAIL_LABELS = {
@@ -216,29 +214,6 @@ const WORKFLOW_STEP_POSITIONS = [
   { id: "review", x: 1050, y: 0 },
   { id: "routing", x: 1260, y: 80 },
   { id: "closed", x: 1470, y: 80 },
-];
-
-const INTEGRATION_ROADMAP_STEPS = [
-  {
-    label: "Posta Kutusu",
-    title: "webmaster@rekabet.gov.tr",
-    detail: "Exchange, Outlook veya IMAP üzerinden ortak kutu",
-  },
-  {
-    label: "Analiz Katmanı",
-    title: "Ön İşleme ve Ek Analizi",
-    detail: "Gövde, ek metni, OCR çıktısı ve güvenlik uyarıları",
-  },
-  {
-    label: "Kurumsal Kayıt",
-    title: "EBYS / Evrak Kaydı",
-    detail: "Kayıt numarası, başvuru türü, birim ve SLA",
-  },
-  {
-    label: "Dış Sistemler",
-    title: "SIEM, DMS, Bildirim",
-    detail: "Denetim izi, dosya arşivi ve birim bilgilendirmesi",
-  },
 ];
 
 const TRAINING_PIPELINE_STEPS = [
@@ -762,7 +737,6 @@ function App() {
   const [operationalDashboard, setOperationalDashboard] = useState(null);
   const [managementReport, setManagementReport] = useState(null);
   const [evaluationReport, setEvaluationReport] = useState(null);
-  const [integrationOverview, setIntegrationOverview] = useState(null);
   const [ingestionOverview, setIngestionOverview] = useState(null);
   const [pendingReview, setPendingReview] = useState([]);
   const [feedbackData, setFeedbackData] = useState({
@@ -859,7 +833,6 @@ function App() {
         operationalData,
         reportData,
         evaluationData,
-        integrationData,
         ingestionData,
         pendingData,
         feedbackResult,
@@ -871,7 +844,6 @@ function App() {
           request("/emails/dashboard/operational"),
           request("/emails/reports/management"),
           request("/emails/evaluation/report"),
-          request("/emails/integrations/overview"),
           request("/emails/ingestion/overview"),
           request("/emails/review/pending"),
           request("/emails/feedback/all"),
@@ -883,7 +855,6 @@ function App() {
       setOperationalDashboard(operationalData);
       setManagementReport(reportData);
       setEvaluationReport(evaluationData);
-      setIntegrationOverview(integrationData);
       setIngestionOverview(ingestionData);
       setPendingReview(pendingData.pending_emails || []);
       setFeedbackData(feedbackResult);
@@ -1315,32 +1286,6 @@ function App() {
     }
   }
 
-  async function handleIntegrationTest(integrationId) {
-    setActionMessage("");
-    setErrorMessage("");
-
-    if (!can("view_dashboard")) {
-      setActionMessage("Bu rol entegrasyon testi çalıştıramaz.");
-      return;
-    }
-
-    try {
-      const result = await request(`/emails/integrations/${integrationId}/test`, {
-        method: "POST",
-        body: JSON.stringify({
-          actor_role: activeRole,
-        }),
-      });
-
-      setActionMessage(
-        `${result.connection_test.name} bağlantı testi: ${result.connection_test.status}.`
-      );
-      await refreshWorkspace();
-    } catch (error) {
-      setErrorMessage(error.message);
-    }
-  }
-
   async function handleCreateTicket() {
     if (!selectedEmail) {
       return;
@@ -1399,6 +1344,28 @@ function App() {
       preprocessing,
       details?.ticket
     );
+  const correctionChanged =
+    correctionForm.corrected_category !== classification.category ||
+    correctionForm.corrected_department !== classification.department ||
+    correctionForm.corrected_priority !== classification.priority;
+
+  useEffect(() => {
+    if (!selectedEmail || !classification.category) {
+      return;
+    }
+
+    setCorrectionForm({
+      corrected_category: classification.category,
+      corrected_department: classification.department,
+      corrected_priority: classification.priority,
+      feedback_note: "",
+    });
+  }, [
+    selectedEmail?.id,
+    classification.category,
+    classification.department,
+    classification.priority,
+  ]);
   const pipelineSummary = pipeline?.summary || {};
   const attachmentGateStats = buildAttachmentGateStats(
     attachmentAnalysis,
@@ -1416,7 +1383,6 @@ function App() {
   const llmConnection = aiAnalysis.llm_connection || {};
   const reportKpis = managementReport?.kpis || {};
   const evaluationSummary = evaluationReport?.summary || {};
-  const integrationSummary = integrationOverview?.summary || {};
   const modelMetadata = modelStatus.metadata || {};
   const modelLabelDistribution = modelMetadata.label_distribution || {};
   const totalTrainingExamples =
@@ -1439,26 +1405,6 @@ function App() {
   const trainingPriorityDistribution =
     modelLabelDistribution.priority ||
     buildTrainingExampleDistribution(trainingData.training_examples, "priority");
-  const integrations = integrationOverview?.integrations || [];
-  const priorityIntegrationIds = [
-    "exchange_outlook",
-    "ebys",
-    "antivirus",
-    "object_storage",
-    "siem",
-    "webhook_api",
-  ];
-  const priorityIntegrations = integrations.filter((integration) =>
-    priorityIntegrationIds.includes(integration.id)
-  );
-  const identityIntegrations = integrations.filter(
-    (integration) => integration.group === "Kimlik ve Yetki"
-  );
-  const remainingIntegrations = integrations.filter(
-    (integration) =>
-      !priorityIntegrationIds.includes(integration.id) &&
-      integration.group !== "Kimlik ve Yetki"
-  );
   const workflowGraph = buildWorkflowGraph(
     selectedEmail,
     classification,
@@ -1522,29 +1468,14 @@ function App() {
           <div className="metrics-grid" aria-label="Panel metrikleri">
             <Metric label="Toplam e-posta" value={dashboard?.total_emails ?? 0} />
             <Metric
-              label="Kritik risk"
-              value={dashboard?.critical_risk_count ?? 0}
-              tone="danger"
-            />
-            <Metric
-              label="Doğruluk"
-              value={formatPercent(dashboard?.accuracy)}
-              tone="success"
-            />
-            <Metric
               label="Onay bekleyen"
               value={operationalDashboard?.pending_review_count ?? 0}
               tone="warning"
             />
             <Metric
-              label="SLA aşımı"
-              value={dashboard?.sla_overdue_count ?? 0}
+              label="Kritik risk"
+              value={dashboard?.critical_risk_count ?? 0}
               tone="danger"
-            />
-            <Metric
-              label="Yönlendirilen"
-              value={operationalDashboard?.routing_status_distribution?.Routed ?? 0}
-              tone="success"
             />
           </div>
         </section>
@@ -1971,209 +1902,6 @@ function App() {
         </section>
       )}
 
-      {activePage === "integrations" && (
-        <section className="integrations-page page-panel" aria-label="Entegrasyonlar">
-          <div className="panel-heading compact-heading">
-            <div>
-              <p className="eyebrow">Entegrasyon Modülü</p>
-              <h2>Kurumsal Bağlantı Hazırlığı</h2>
-            </div>
-            <span>{formatDate(integrationOverview?.generated_at)}</span>
-          </div>
-
-          <div className="integration-readiness">
-            <div>
-              <span>Ortam</span>
-              <strong>Sentetik test</strong>
-              <p>Canlı kurum bilgisi bekleniyor</p>
-            </div>
-            <div>
-              <span>Kaynak kutu</span>
-              <strong>webmaster@rekabet.gov.tr</strong>
-              <p>Ortak posta kutusu senaryosu</p>
-            </div>
-            <div>
-              <span>Hazır sözleşme</span>
-              <strong>{integrationSummary.ready_count ?? 0}</strong>
-              <p>Test edilebilir bağlantı tanımı</p>
-            </div>
-            <div>
-              <span>Plan bekleyen</span>
-              <strong>{integrationSummary.planned_count ?? 0}</strong>
-              <p>Uç nokta veya yetki bekliyor</p>
-            </div>
-          </div>
-
-          <div className="integration-flow-strip" aria-label="Entegrasyon akışı">
-            {INTEGRATION_ROADMAP_STEPS.map((step) => (
-              <div className="integration-flow-step" key={step.label}>
-                <span>{step.label}</span>
-                <strong>{step.title}</strong>
-                <p>{step.detail}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="integration-summary-grid">
-            <ReportMetric
-              label="Toplam bağlantı"
-              value={integrationSummary.total_integrations ?? 0}
-            />
-            <ReportMetric
-              label="İçe aktarım"
-              value={integrationSummary.inbound_count ?? 0}
-              tone="success"
-            />
-            <ReportMetric
-              label="Dışa aktarım"
-              value={integrationSummary.outbound_count ?? 0}
-            />
-            <ReportMetric
-              label="Sentetik çalışan"
-              value={integrationSummary.simulated_count ?? 0}
-              tone="warning"
-            />
-            <ReportMetric
-              label="Ortalama sağlık"
-              value={formatPercent((integrationSummary.average_health ?? 0) / 100)}
-              tone="success"
-            />
-          </div>
-
-          <div className="integration-focus-grid">
-            <div className="integration-inventory">
-              <div className="panel-heading compact-heading">
-                <h3>Kritik Bağlantılar</h3>
-                <span>Webmaster kutusundan evrak ve denetim sistemlerine giden yol</span>
-              </div>
-              <div className="integration-card-grid">
-                {priorityIntegrations.map((integration) => (
-                  <IntegrationCard
-                    integration={integration}
-                    key={integration.id}
-                    onTest={handleIntegrationTest}
-                    testDisabled={!can("view_dashboard")}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <aside className="integration-side-panel">
-              <div className="compact-section">
-                <h3>Birim Eşleştirme</h3>
-                {(integrationOverview?.directory_units || []).map((unit) => (
-                  <div className="directory-row" key={unit.unit}>
-                    <strong>{unit.unit}</strong>
-                    <span>{unit.mailbox}</span>
-                    <p>
-                      {unit.synthetic_users} kullanıcı · {unit.routing_role}
-                    </p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="compact-section">
-                <h3>Veri Akışı</h3>
-                {(integrationOverview?.data_flows || []).map((flow) => (
-                  <div className="flow-row" key={`${flow.source}-${flow.target}`}>
-                    <div>
-                      <strong>{flow.source}</strong>
-                      <span>{flow.target}</span>
-                    </div>
-                    <p>{flow.payload}</p>
-                    <em>{flow.status}</em>
-                  </div>
-                ))}
-              </div>
-            </aside>
-          </div>
-
-          <div className="integration-secondary-grid">
-            <div className="integration-inventory">
-              <div className="panel-heading compact-heading">
-                <h3>Kimlik ve Yetki</h3>
-                <span>Kurumsal kullanıcı ve rol aktarımı</span>
-              </div>
-              <div className="integration-card-grid compact-cards">
-                {identityIntegrations.map((integration) => (
-                  <IntegrationCard
-                    integration={integration}
-                    key={integration.id}
-                    onTest={handleIntegrationTest}
-                    testDisabled={!can("view_dashboard")}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className="integration-inventory">
-              <div className="panel-heading compact-heading">
-                <h3>Destekleyici Sistemler</h3>
-                <span>Bildirim, KEP ve iş takip bağlantıları</span>
-              </div>
-              <div className="integration-card-grid compact-cards">
-                {remainingIntegrations.map((integration) => (
-                  <IntegrationCard
-                    integration={integration}
-                    key={integration.id}
-                    onTest={handleIntegrationTest}
-                    testDisabled={!can("view_dashboard")}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="integration-control-grid">
-            <div className="compact-section">
-              <h3>Güvenlik Kontrolleri</h3>
-              <div className="security-list">
-                {(integrationOverview?.security_controls || []).map((control) => (
-                  <div className="security-row" key={control.name}>
-                    <strong>{control.name}</strong>
-                    <span>{control.status}</span>
-                    <p>{control.coverage}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="compact-section">
-              <h3>Canlıya Geçiş Ön Koşulları</h3>
-              <div className="go-live-list">
-                <span>Kurumsal uç nokta adresleri</span>
-                <span>Servis hesabı ve yetki kapsamı</span>
-                <span>IP kısıtı, sertifika ve gizli anahtar kasası</span>
-                <span>EBYS, DMS ve bildirim servis sözleşmeleri</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="integration-inventory all-integrations">
-            <div className="panel-heading compact-heading">
-              <h3>Tüm Entegrasyon Envanteri</h3>
-              <span>Hazırlanan bağlantı sözleşmeleri</span>
-            </div>
-            <div className="integration-table">
-              <span>Sistem</span>
-              <span>Grup</span>
-              <span>Yön</span>
-              <span>Durum</span>
-              <span>Sonraki adım</span>
-              {integrations.map((integration) => (
-                <div className="integration-table-row" key={integration.id}>
-                  <strong>{integration.name}</strong>
-                  <span>{integration.group}</span>
-                  <span>{integration.direction}</span>
-                  <span>{integration.status}</span>
-                  <p>{integration.next_step}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
-
       {activePage === "operation" && (
         <main className="workspace-grid">
         <aside className="queue-panel">
@@ -2233,7 +1961,7 @@ function App() {
                 <span className="queue-subject">{email.subject}</span>
                 <span className="queue-meta">{email.sender}</span>
                 <span className="status-row">
-                  <span>{email.source_mailbox}</span>
+                  <span>{formatMailboxDisplay(email.source_mailbox)}</span>
                   <strong>{getStatusLabel(email.routing_status)}</strong>
                 </span>
                 <span className="sla-row">
@@ -2246,23 +1974,6 @@ function App() {
             ))}
           </div>
 
-          <div className="compact-section">
-            <h3>Onay Bekleyenler</h3>
-            {pendingReview.length === 0 ? (
-              <p className="muted">Bekleyen kritik kayıt yok.</p>
-            ) : (
-              pendingReview.slice(0, 5).map((item) => (
-                <button
-                  key={item.email.id}
-                  className="mini-row"
-                  onClick={() => setSelectedEmailId(item.email.id)}
-                >
-                  <span>{item.email.subject}</span>
-                  <strong>{item.classification.priority}</strong>
-                </button>
-              ))
-            )}
-          </div>
         </aside>
 
         <section className="detail-panel">
@@ -2360,6 +2071,41 @@ function App() {
                             <span>{formatPercent(classification.confidence_score)}</span>
                           </div>
 
+                          <article className="decision-panel">
+                            <div className="decision-main">
+                              <span>Sistem Kararı</span>
+                              <strong>{classification.department}</strong>
+                              <p>{classification.category}</p>
+                            </div>
+                            <div className="decision-metrics">
+                              <div>
+                                <span>Güven</span>
+                                <strong>{formatPercent(classification.confidence_score)}</strong>
+                              </div>
+                              <div>
+                                <span>Öncelik</span>
+                                <strong>{classification.priority}</strong>
+                              </div>
+                              <div>
+                                <span>Onay</span>
+                                <strong>
+                                  {classification.requires_human_review
+                                    ? "Gerekli"
+                                    : "Gerekli değil"}
+                                </strong>
+                              </div>
+                            </div>
+                            <div className="decision-reason">
+                              <span>Karar gerekçesi</span>
+                              <p>{classification.explanation}</p>
+                              {classification.context_signal && (
+                                <em>{classification.context_signal}</em>
+                              )}
+                            </div>
+                          </article>
+
+                          <TextBlock title="Özet" text={analysis.summary} />
+
                           <div className="analysis-grid">
                             <Meta label="Kategori" value={classification.category} />
                             <Meta label="Birim" value={classification.department} />
@@ -2385,15 +2131,6 @@ function App() {
                             />
                           </div>
 
-                          <TextBlock title="Özet" text={analysis.summary} />
-                          <TextBlock
-                            title="Süre hedefi politikası"
-                            text={
-                              sla.policy_name
-                                ? `${sla.policy_name}: ${sla.sla_days} gün içinde işlem hedeflenir.`
-                                : "-"
-                            }
-                          />
                           <TextBlock
                             title="Sistem açıklaması"
                             text={classification.explanation}
@@ -2882,76 +2619,118 @@ function App() {
                         </section>
 
                         <section className="section-block correction-section">
-                          <h3>Yönlendirme Düzeltme</h3>
-                          <form className="correction-form" onSubmit={handleCorrectRouting}>
-                            <label>
-                              <span>Kategori</span>
-                              <select
-                                value={correctionForm.corrected_category}
-                                onChange={(event) =>
-                                  setCorrectionForm({
-                                    ...correctionForm,
-                                    corrected_category: event.target.value,
-                                  })
-                                }
-                              >
-                                {CATEGORY_OPTIONS.map((category) => (
-                                  <option key={category}>{category}</option>
-                                ))}
-                              </select>
-                            </label>
-                            <label>
-                              <span>Birim</span>
-                              <select
-                                value={correctionForm.corrected_department}
-                                onChange={(event) =>
-                                  setCorrectionForm({
-                                    ...correctionForm,
-                                    corrected_department: event.target.value,
-                                  })
-                                }
-                              >
-                                {DEPARTMENT_OPTIONS.map((department) => (
-                                  <option key={department}>{department}</option>
-                                ))}
-                              </select>
-                            </label>
-                            <label>
-                              <span>Öncelik</span>
-                              <select
-                                value={correctionForm.corrected_priority}
-                                onChange={(event) =>
-                                  setCorrectionForm({
-                                    ...correctionForm,
-                                    corrected_priority: event.target.value,
-                                  })
-                                }
-                              >
-                                {PRIORITY_OPTIONS.map((priority) => (
-                                  <option key={priority}>{priority}</option>
-                                ))}
-                              </select>
-                            </label>
-                            <label>
-                              <span>Not</span>
-                              <input
-                                value={correctionForm.feedback_note}
-                                onChange={(event) =>
-                                  setCorrectionForm({
-                                    ...correctionForm,
-                                    feedback_note: event.target.value,
-                                  })
-                                }
-                                placeholder="Geri bildirim notu"
-                              />
-                            </label>
-                            <button
-                              disabled={!can("correct_routing")}
-                              type="submit"
+                          <div className="panel-heading compact-heading">
+                            <div>
+                              <h3>Yanlış Yönlendirme Düzeltme</h3>
+                              <span>
+                                Operatör düzeltmesi yönlendirmeyi günceller ve eğitim
+                                verisine yeni örnek olarak eklenir.
+                              </span>
+                            </div>
+                            <strong
+                              className={`correction-state ${
+                                correctionChanged ? "changed" : "unchanged"
+                              }`}
                             >
-                              Düzeltmeyi Kaydet
-                            </button>
-                          </form>
+                              {correctionChanged ? "Düzeltme hazır" : "Değişiklik yok"}
+                            </strong>
+                          </div>
+
+                          <div className="correction-layout">
+                            <div className="correction-context">
+                              <div>
+                                <span>Mevcut sistem kararı</span>
+                                <strong>{classification.department}</strong>
+                                <p>
+                                  {classification.category} · {classification.priority}
+                                </p>
+                              </div>
+                              <div>
+                                <span>Operatör düzeltmesi</span>
+                                <strong>{correctionForm.corrected_department}</strong>
+                                <p>
+                                  {correctionForm.corrected_category} ·{" "}
+                                  {correctionForm.corrected_priority}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="learning-flow">
+                              <span>1. Hatalı karar seçilir</span>
+                              <span>2. Doğru etiket kaydedilir</span>
+                              <span>3. Feedback eğitim verisine eklenir</span>
+                            </div>
+
+                            <form className="correction-form" onSubmit={handleCorrectRouting}>
+                              <label>
+                                <span>Kategori</span>
+                                <select
+                                  value={correctionForm.corrected_category}
+                                  onChange={(event) =>
+                                    setCorrectionForm({
+                                      ...correctionForm,
+                                      corrected_category: event.target.value,
+                                    })
+                                  }
+                                >
+                                  {CATEGORY_OPTIONS.map((category) => (
+                                    <option key={category}>{category}</option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label>
+                                <span>Birim</span>
+                                <select
+                                  value={correctionForm.corrected_department}
+                                  onChange={(event) =>
+                                    setCorrectionForm({
+                                      ...correctionForm,
+                                      corrected_department: event.target.value,
+                                    })
+                                  }
+                                >
+                                  {DEPARTMENT_OPTIONS.map((department) => (
+                                    <option key={department}>{department}</option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label>
+                                <span>Öncelik</span>
+                                <select
+                                  value={correctionForm.corrected_priority}
+                                  onChange={(event) =>
+                                    setCorrectionForm({
+                                      ...correctionForm,
+                                      corrected_priority: event.target.value,
+                                    })
+                                  }
+                                >
+                                  {PRIORITY_OPTIONS.map((priority) => (
+                                    <option key={priority}>{priority}</option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label>
+                                <span>Not</span>
+                                <input
+                                  value={correctionForm.feedback_note}
+                                  onChange={(event) =>
+                                    setCorrectionForm({
+                                      ...correctionForm,
+                                      feedback_note: event.target.value,
+                                    })
+                                  }
+                                  placeholder="Örn. konu teknik hata olduğu için Bilgi İşlem"
+                                />
+                              </label>
+                              <button
+                                disabled={!can("correct_routing")}
+                                type="submit"
+                              >
+                                Düzeltmeyi Kaydet
+                              </button>
+                            </form>
+                          </div>
                         </section>
                       </>
                     )}
@@ -3241,6 +3020,26 @@ function App() {
             <div className="alert warning">{modelStatus.error}</div>
           )}
 
+          <div className="training-decision-panel">
+            <div>
+              <span>Model öğrenme durumu</span>
+              <strong>{modelStatus.is_trained ? "Eğitim tamamlandı" : "Eğitim bekliyor"}</strong>
+              <p>
+                Sentetik örnekler ve operatör düzeltmeleri kategori, birim ve
+                öncelik tahmini için etiketli veri olarak kullanılır.
+              </p>
+            </div>
+            <div className="training-source-grid">
+              <Meta label="Toplam örnek" value={totalTrainingExamples} />
+              <Meta label="Sentetik örnek" value={seedTrainingExamples} />
+              <Meta label="Feedback örneği" value={feedbackTrainingExamples} />
+              <Meta
+                label="Model"
+                value={getModelTypeLabel(modelMetadata.model_type)}
+              />
+            </div>
+          </div>
+
           <div className="training-layout">
             <div className="training-section-card">
               <div className="panel-heading compact-heading">
@@ -3263,8 +3062,13 @@ function App() {
 
             <div className="training-section-card">
               <div className="panel-heading compact-heading">
-                <h3>Veri Seti Kompozisyonu</h3>
-                <span>Modelin öğrendiği etiket alanları</span>
+                <h3>Model Ne Öğreniyor?</h3>
+                <span>Her örnek üç etikete ayrılır: kategori, hedef birim ve öncelik</span>
+              </div>
+              <div className="training-label-strip">
+                <span>Kategori tahmini</span>
+                <span>Birim yönlendirme</span>
+                <span>Öncelik seviyesi</span>
               </div>
               <div className="training-distribution-grid">
                 <DistributionList
@@ -3288,6 +3092,16 @@ function App() {
               <div className="panel-heading compact-heading">
                 <h3>Operatör Geri Bildirimleri</h3>
                 <span>Yanlış yönlendirmeler eğitim verisine dönüşür</span>
+              </div>
+              <div className="feedback-learning-summary">
+                <div>
+                  <span>Düzeltme kaydı</span>
+                  <strong>{feedbackData.feedback_count ?? 0}</strong>
+                </div>
+                <div>
+                  <span>Eğitime giren</span>
+                  <strong>{feedbackTrainingExamples}</strong>
+                </div>
               </div>
               {feedbackData.feedbacks.length === 0 ? (
                 <p className="muted">Henüz operatör düzeltmesi yok.</p>
@@ -3355,51 +3169,6 @@ function ReportMetric({ label, value, tone = "neutral" }) {
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
-  );
-}
-
-function IntegrationCard({ integration, onTest, testDisabled }) {
-  const statusTone =
-    integration.status === "Hazır"
-      ? "success"
-      : integration.status === "Uyarı"
-        ? "warning"
-        : "neutral";
-
-  return (
-    <article className={`integration-card ${statusTone}`}>
-      <div className="integration-card-header">
-        <div>
-          <span>{integration.group}</span>
-          <h4>{integration.name}</h4>
-        </div>
-        <strong>{integration.status}</strong>
-      </div>
-      <div className="integration-meta-grid">
-        <Meta label="Yön" value={integration.direction} />
-        <Meta label="Bağlantı" value={integration.mode} />
-        <Meta label="Sahip" value={integration.owner} />
-        <Meta label="Sağlık" value={`${integration.health_score}%`} />
-      </div>
-      <p className="integration-contract">Veri alanları: {integration.data_contract}</p>
-      <div className="integration-capabilities">
-        {integration.capabilities?.slice(0, 3).map((capability) => (
-          <span key={capability}>{capability}</span>
-        ))}
-      </div>
-      <div className="integration-footer">
-        <span>{integration.endpoint_hint}</span>
-        <button
-          className="secondary-button small-button"
-          disabled={testDisabled}
-          type="button"
-          onClick={() => onTest(integration.id)}
-        >
-          Test Çalıştır
-        </button>
-      </div>
-      <p className="integration-next-step">{integration.next_step}</p>
-    </article>
   );
 }
 
