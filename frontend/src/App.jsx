@@ -11,6 +11,7 @@ import "./App.css";
 
 const API_BASE_URL = "http://127.0.0.1:8000";
 const DEMO_WEBMASTER_MAILBOX = "webmaster.rekabet.demo@gmail.com";
+const SYNTHETIC_WEBMASTER_MAILBOX = "webmaster@rekabet.gov.tr";
 
 const EMPTY_IMPORT_FORM = {
   subject: "",
@@ -1141,6 +1142,44 @@ function App() {
           : result.skipped_ignored_count > 0
             ? `${result.skipped_ignored_count} sistem bildirimi atlandı. İşlenecek yeni e-posta yok.`
           : "Webmaster posta kutusunda yeni e-posta yok."
+      );
+      await refreshWorkspace();
+    } catch (error) {
+      setErrorMessage(error.message);
+    }
+  }
+
+  async function handleDemoScenarioImport() {
+    setActionMessage("");
+    setErrorMessage("");
+
+    if (!can("import_email")) {
+      setActionMessage("Bu rol demo senaryosu içe aktaramaz.");
+      return;
+    }
+
+    try {
+      const result = await request("/emails/ingestion/sync", {
+        method: "POST",
+        body: JSON.stringify({
+          source_mailbox: SYNTHETIC_WEBMASTER_MAILBOX,
+          connector_id: "synthetic_demo",
+          limit: 30,
+          actor_role: activeRole,
+          process_after_import: true,
+        }),
+      });
+
+      const firstImportedEmail = result.imported_emails?.[0];
+
+      if (firstImportedEmail) {
+        setSelectedEmailId(firstImportedEmail.id);
+      }
+
+      setActionMessage(
+        result.imported_count > 0
+          ? `${result.imported_count} demo senaryosu içe aktarıldı ve işlendi.`
+          : "Demo senaryoları zaten içe aktarılmış."
       );
       await refreshWorkspace();
     } catch (error) {
@@ -2822,14 +2861,24 @@ function App() {
               <h2>E-posta Alma</h2>
             <span>{DEMO_WEBMASTER_MAILBOX} ortak kutusu</span>
           </div>
-            <button
-              className="secondary-button"
-              disabled={!can("import_email")}
-              type="button"
-              onClick={handleMailboxSync}
-            >
-              Posta Kutusunu Senkronize Et
-            </button>
+            <div className="ingestion-actions">
+              <button
+                className="secondary-button"
+                disabled={!can("import_email")}
+                type="button"
+                onClick={handleDemoScenarioImport}
+              >
+                Demo Senaryolarını Yükle
+              </button>
+              <button
+                className="secondary-button"
+                disabled={!can("import_email")}
+                type="button"
+                onClick={handleMailboxSync}
+              >
+                Posta Kutusunu Senkronize Et
+              </button>
+            </div>
           </div>
 
           <div className="connector-overview">

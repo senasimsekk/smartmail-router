@@ -259,5 +259,161 @@
     "expected_department": "Evrak Kayıt",
     "expected_priority": "Düşük",
     "requires_human_review": false
+  },
+  {
+    "id": 21,
+    "subject": "Ekte sunulmuştur",
+    "sender": "ayse.karaca@example.com",
+    "body": "Merhaba, talebim ekte sunulmuştur. Gereğini rica ederim.\n\nSaygılarımla,\nAyşe Karaca",
+    "source_mailbox": "webmaster@rekabet.gov.tr",
+    "has_attachment": true,
+    "attachment_names": ["kvkk_silinme_basvurusu.pdf"],
+    "attachment_texts": [
+      {
+        "filename": "kvkk_silinme_basvurusu.pdf",
+        "extracted_text": "6698 sayılı KVKK kapsamında kurumunuzda işlenen kişisel verilerimin silinmesini ve tarafıma yazılı bilgi verilmesini talep ediyorum. Başvuru tarihi 18/07/2026. T.C. kimlik no ve iletişim adresim dilekçe ekindedir."
+      }
+    ],
+    "expected_category": "KVKK Başvurusu",
+    "expected_department": "Hukuk Müşavirliği",
+    "expected_priority": "Yüksek",
+    "requires_human_review": true
+  },
+  {
+    "id": 22,
+    "subject": "KVKK başvuru formu açılmıyor",
+    "sender": "deniz.arslan@example.com",
+    "body": "KVKK başvuru formunu doldurmak istiyorum ancak portalda form açılmıyor ve hata mesajı veriyor. Başvuru yapabilmem için teknik destek rica ederim.",
+    "source_mailbox": "webmaster@rekabet.gov.tr",
+    "has_attachment": false,
+    "attachment_names": [],
+    "expected_category": "Teknik Destek",
+    "expected_department": "Bilgi İşlem",
+    "expected_priority": "Normal",
+    "requires_human_review": false
+  },
+  {
+    "id": 23,
+    "subject": "Şifreli arşiv içinde ihbar belgeleri",
+    "sender": "anonim2@example.com",
+    "body": "Rakip firmaların fiyatları birlikte belirlediğine dair yazışmalar ekteki şifreli arşivdedir. Parola ayrı kanaldan iletilecektir. Kimliğimin gizli tutulmasını talep ediyorum.",
+    "source_mailbox": "webmaster@rekabet.gov.tr",
+    "has_attachment": true,
+    "attachment_names": ["sifreli_ihbar_belgeleri.zip"],
+    "attachment_texts": [],
+    "expected_category": "İhbar",
+    "expected_department": "İlgili Uzman Daire",
+    "expected_priority": "Kritik",
+    "requires_human_review": true
+  },
+  {
+    "id": 24,
+    "subject": "Taranmış dilekçe ve kimlik görseli",
+    "sender": "elif.sahin@example.com",
+    "body": "Başvuru dilekçem ve kimlik görselim taranmış belge olarak ektedir. Ekteki belgelerde adres ve telefon bilgilerim yer almaktadır.",
+    "source_mailbox": "webmaster@rekabet.gov.tr",
+    "has_attachment": true,
+    "attachment_names": ["tarama_dilekce_kimlik.pdf", "kimlik_on_yuz.png"],
+    "attachment_texts": [
+      {
+        "filename": "tarama_dilekce_kimlik.pdf",
+        "extracted_text": "Başvuru sahibi Elif Şahin, adres ve telefon bilgileriyle birlikte kurum kayıtlarında bulunan kişisel verilerinin incelenmesini talep eder."
+      }
+    ],
+    "expected_category": "KVKK Başvurusu",
+    "expected_department": "Hukuk Müşavirliği",
+    "expected_priority": "Yüksek",
+    "requires_human_review": true
+  },
+  {
+    "id": 25,
+    "subject": "KEP üzerinden gelen UYAP tebligatı",
+    "sender": "kep.tebligat@example.com",
+    "body": "Kurumunuza ait dosya için UYAP çıktısı ve elektronik imzalı tebligat ekte sunulmuştur. Süre başlangıcı 22/07/2026 olarak bildirilmiştir.",
+    "source_mailbox": "webmaster@rekabet.gov.tr",
+    "has_attachment": true,
+    "attachment_names": ["uyap_tebligat_2026-3-118.pdf", "e-imzali_tebligat.p7s"],
+    "attachment_texts": [
+      {
+        "filename": "uyap_tebligat_2026-3-118.pdf",
+        "extracted_text": "Ankara 4. İdare Mahkemesi 2026-3-118 sayılı dosya kapsamında savunma verilmesi için 22/07/2026 tarihli tebligat yapılmıştır."
+      }
+    ],
+    "expected_category": "Hukuki Tebligat",
+    "expected_department": "Evrak Kayıt",
+    "expected_priority": "Kritik",
+    "requires_human_review": true
+  },
+  {
+    "id": 26,
+    "subject": "Otomatik cevap: Ofis dışındayım",
+    "sender": "noreply.partner@example.com",
+    "body": "Otomatik cevap: 22-26 Temmuz tarihleri arasında ofis dışında olacağım. Acil konular için genel destek adresiyle iletişime geçebilirsiniz.",
+    "source_mailbox": "webmaster@rekabet.gov.tr",
+    "has_attachment": false,
+    "attachment_names": [],
+    "expected_category": "Genel Başvuru",
+    "expected_department": "Evrak Kayıt",
+    "expected_priority": "Düşük",
+    "requires_human_review": false
+  },
+  {
+    "id": 27,
+    "subject": "Fatura ödeme bilgisi ve satın alma referansı",
+    "sender": "finans@example.com",
+    "body": "Satın alma sürecinde ilettiğimiz teklif sonrası kesilen FTR-2026-114 numaralı faturanın ödeme durumu hakkında muhasebe biriminden bilgi rica ederiz. Tutar ve IBAN bilgisi ekteki dekont dosyasında yer almaktadır.",
+    "source_mailbox": "webmaster@rekabet.gov.tr",
+    "has_attachment": true,
+    "attachment_names": ["fatura_2026_114.pdf", "dekont_iban_bilgisi.xlsx"],
+    "attachment_texts": [
+      {
+        "filename": "fatura_2026_114.pdf",
+        "extracted_text": "Fatura numarası FTR-2026-114, ödeme vadesi 25/07/2026, tutar 184.500 TL."
+      }
+    ],
+    "expected_category": "Fatura / Ödeme",
+    "expected_department": "Strateji / Mali İşler",
+    "expected_priority": "Normal",
+    "requires_human_review": false
+  },
+  {
+    "id": 28,
+    "subject": "Basın açıklaması ve karar metni talebi",
+    "sender": "editor@example.com",
+    "body": "Son yayımlanan rekabet soruşturması kararı hakkında haber hazırlıyoruz. Hem karar metnine ulaşmak hem de kurumdan resmi basın açıklaması almak istiyoruz.",
+    "source_mailbox": "webmaster@rekabet.gov.tr",
+    "has_attachment": false,
+    "attachment_names": [],
+    "expected_category": "Basın Talebi",
+    "expected_department": "Basın ve Halkla İlişkiler",
+    "expected_priority": "Yüksek",
+    "requires_human_review": false
+  },
+  {
+    "id": 29,
+    "subject": "Toplu başvuru belgeleri",
+    "sender": "hukuk.burosu@example.com",
+    "body": "Müvekkillerimize ait başvuru belgeleri toplu arşiv olarak ekte sunulmuştur. Arşiv içinde dilekçeler, imzalı formlar ve önceki yazışmalar bulunmaktadır.",
+    "source_mailbox": "webmaster@rekabet.gov.tr",
+    "has_attachment": true,
+    "attachment_names": ["toplu_basvuru_belgeleri.rar"],
+    "attachment_texts": [],
+    "expected_category": "Evrak Kayıt",
+    "expected_department": "Evrak Kayıt",
+    "expected_priority": "Normal",
+    "requires_human_review": true
+  },
+  {
+    "id": 30,
+    "subject": "Reklam aboneliği",
+    "sender": "newsletter@example.com",
+    "body": "Bu hafta kamu kurumlarına özel yazılım kampanyamızdan yararlanmak için bağlantıya tıklayın. Abonelikten çıkmak için unsubscribe bağlantısını kullanabilirsiniz.",
+    "source_mailbox": "webmaster@rekabet.gov.tr",
+    "has_attachment": false,
+    "attachment_names": [],
+    "expected_category": "Genel Başvuru",
+    "expected_department": "Evrak Kayıt",
+    "expected_priority": "Düşük",
+    "requires_human_review": false
   }
 ]

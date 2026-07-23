@@ -39,6 +39,7 @@ def seed_emails():
                 requires_human_review=email_data.get("requires_human_review", False),
                 has_attachment=email_data.get("has_attachment", False),
                 attachment_names=email_data.get("attachment_names", []),
+                attachment_texts=email_data.get("attachment_texts", []),
                 expected_category=email_data.get("expected_category"),
                 expected_department=email_data.get("expected_department"),
                 expected_priority=email_data.get("expected_priority"),

@@ -1874,7 +1874,14 @@ textarea {
   font-weight: 700;
 }
 
-.ingestion-header .secondary-button {
+.ingestion-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.ingestion-actions .secondary-button {
   min-height: 40px;
   white-space: nowrap;
 }
@@ -2442,6 +2449,14 @@ textarea {
   .ingestion-header {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .ingestion-actions {
+    justify-content: stretch;
+  }
+
+  .ingestion-actions .secondary-button {
+    flex: 1 1 180px;
   }
 
   .connector-overview {

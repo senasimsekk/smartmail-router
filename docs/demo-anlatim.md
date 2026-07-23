@@ -181,17 +181,21 @@ Degerlendirme ekrani modelin sadece calisip calismadigini degil, ne kadar basari
 
 ## 11. Demo icin test e-postalari
 
-Demo oncesi su tiplerde e-postalar gonderilebilir:
+Demo veri setinde su tiplerde e-postalar bulunur. Bu liste demo sirasinda hangi
+maili neden sectigini anlatmak icin kullanilabilir:
 
-| Konu | Beklenen karar |
-| --- | --- |
-| KVKK basvuru talebi | Hukuk Musavirligi |
-| KVKK formu acilmiyor | Bilgi Islem |
-| Basin roportaj talebi | Basin ve Halkla Iliskiler |
-| Fatura odeme durumu | Mali Isler |
-| Mahkeme tebligati ekte sunulmustur | Evrak Kayit / Hukuk |
-| Haksiz fiyat uygulamasi sikayeti | Ilgili uzman daire |
-| Satin alma sureci hakkinda bilgi talebi | Satin Alma |
+| Senaryo | Ne gosterir? | Beklenen karar |
+| --- | --- | --- |
+| KVKK basvuru talebi | Kisisel veri basvurusu | Hukuk Musavirligi |
+| Ekte sunulmustur | Mail govdesi zayif, asil bilgi PDF metninde | Hukuk Musavirligi |
+| KVKK formu acilmiyor | KVKK kelimesi gecse de asil niyet teknik hata | Bilgi Islem |
+| Sifreli ihbar arsivi | ZIP/RAR ve sifreli dosya guvenlik uyarisi | Ilgili Uzman Daire |
+| Taranmis dilekce ve kimlik | OCR ihtiyaci ve kisisel veri sinyali | Hukuk Musavirligi |
+| KEP / UYAP tebligati | E-imzali resmi evrak ve sure hassasiyeti | Evrak Kayit |
+| Fatura odeme bilgisi ve satin alma referansi | Iki birime benzeyen ama mali niyeti agir basan mail | Strateji / Mali Isler |
+| Basin aciklamasi ve karar metni talebi | Basin + karar metni iceren karma talep | Basin ve Halkla Iliskiler |
+| Toplu basvuru belgeleri | Arsiv dosyasi ve evrak kaydi ihtiyaci | Evrak Kayit |
+| Otomatik cevap / reklam aboneligi | On isleme tarafinda otomatik cevap/spam sinyali | Evrak Kayit |
 
 Bu testler ozellikle baglam kararini gostermek icin faydalidir. Ayni kelime baska bir niyetle kullanildiginda sistemin farkli birime yonlendirebilmesi projenin guclu tarafidir.
 

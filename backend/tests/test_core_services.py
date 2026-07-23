@@ -1,5 +1,7 @@
+import json
 import unittest
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import patch
 from types import SimpleNamespace
 
@@ -41,6 +43,10 @@ from app.services.trainable_model_service import (
     import_ml_dependencies,
     train_single_target_model,
 )
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SYNTHETIC_DATASET_PATH = PROJECT_ROOT / "data" / "synthetic_emails.json"
 
 
 def make_email(**overrides):
@@ -131,6 +137,20 @@ class ClassificationServiceTests(unittest.TestCase):
         self.assertEqual(result["category"], "Fatura / Ödeme")
         self.assertEqual(result["department"], "Strateji / Mali İşler")
         self.assertFalse(result["requires_human_review"])
+
+    def test_demo_dataset_contains_rich_classification_scenarios(self):
+        emails = json.loads(SYNTHETIC_DATASET_PATH.read_text(encoding="utf-8"))
+        scenario_emails = [email for email in emails if email["id"] >= 21]
+
+        self.assertEqual(len(emails), 30)
+        self.assertEqual(len(scenario_emails), 10)
+
+        for email in scenario_emails:
+            result = classify_email(email)
+
+            self.assertEqual(result["category"], email["expected_category"])
+            self.assertEqual(result["department"], email["expected_department"])
+            self.assertEqual(result["priority"], email["expected_priority"])
 
 
 class TrainableModelServiceTests(unittest.TestCase):
