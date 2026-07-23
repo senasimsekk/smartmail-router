@@ -55,9 +55,18 @@ CLASSIFICATION_RULES = [
             "sistem hatasi",
             "erişim",
             "erisim",
+            "erisim sorunu",
+            "giris hatasi",
             "web sitesi",
             "baglanti",
+            "baglanti sorunu",
             "calismiyor",
+            "acilmiyor",
+            "hata aliyorum",
+            "hata veriyor",
+            "erisemiyorum",
+            "giremiyorum",
+            "yukleyemiyorum",
         ],
         "explanation": "Mailde sistem, portal, giriş veya erişim problemi ifadeleri geçtiği için Bilgi İşlem önerildi.",
     },
@@ -210,6 +219,67 @@ CLASSIFICATION_RULES = [
 ]
 
 
+TECHNICAL_INTENT_KEYWORDS = [
+    "acilmiyor",
+    "calismiyor",
+    "hata aliyorum",
+    "hata veriyor",
+    "hata mesaji",
+    "erisim sorunu",
+    "erisemiyorum",
+    "giremiyorum",
+    "yukleyemiyorum",
+    "gonderemiyorum",
+    "baglanti sorunu",
+    "portal hatasi",
+    "giris hatasi",
+    "ekran bos",
+    "sistem uyarisi",
+]
+
+TECHNICAL_CONTEXT_TOPICS = [
+    "kvkk",
+    "kisisel veri",
+    "fatura",
+    "odeme",
+    "ihale",
+    "satin alma",
+    "tebligat",
+    "mahkeme",
+    "basvuru formu",
+    "form",
+]
+
+FINANCIAL_INTENT_KEYWORDS = [
+    "odeme durumu",
+    "odeme bilgisi",
+    "odeme yapilmasi",
+    "fatura numarasi",
+    "tutar",
+    "dekont",
+    "muhasebe",
+    "vade",
+]
+
+
+def find_matching_signals(normalized_text: str, keywords: list[str]) -> list[str]:
+    return [
+        keyword
+        for keyword in keywords
+        if normalize_text(keyword) in normalized_text
+    ]
+
+
+def merge_keywords(existing_keywords: list[str], new_keywords: list[str]) -> list[str]:
+    merged_keywords = []
+
+    for keyword in existing_keywords + new_keywords:
+        if keyword not in merged_keywords:
+            merged_keywords.append(keyword)
+
+    return merged_keywords
+
+
 def calculate_confidence(match_count: int) -> float:
     """
     Eşleşen anahtar kelime sayısına göre basit bir güven skoru üretir.
@@ -226,11 +296,84 @@ def calculate_confidence(match_count: int) -> float:
 
     return round(score, 2)
 
+
+def apply_intent_routing_overrides(result: dict, normalized_text: str) -> dict:
+    """
+    Aynı mailde birden fazla konu kelimesi geçebilir. Bu katman konu adından çok
+    talebin eylemine bakarak daha doğru birime yönlendirme yapar.
+    """
+
+    technical_intent_matches = find_matching_signals(
+        normalized_text,
+        TECHNICAL_INTENT_KEYWORDS,
+    )
+    technical_topic_matches = find_matching_signals(
+        normalized_text,
+        TECHNICAL_CONTEXT_TOPICS,
+    )
+    financial_intent_matches = find_matching_signals(
+        normalized_text,
+        FINANCIAL_INTENT_KEYWORDS,
+    )
+
+    if technical_intent_matches and (
+        result["category"] != "Teknik Destek" or technical_topic_matches
+    ):
+        result.update(
+            {
+                "category": "Teknik Destek",
+                "department": "Bilgi İşlem",
+                "priority": "Normal",
+                "requires_human_review": False,
+                "confidence_score": max(result.get("confidence_score", 0), 0.86),
+                "contextual_override": True,
+                "context_signal": "Teknik hata eylemi",
+                "matched_keywords": merge_keywords(
+                    result.get("matched_keywords", []),
+                    technical_intent_matches,
+                ),
+                "explanation": (
+                    "Mailde başka bir konuya ait ifadeler geçse de ana eylem "
+                    "erişim, hata veya sistem kullanımı problemi olduğu için "
+                    "Bilgi İşlem önerildi."
+                ),
+            }
+        )
+
+        return result
+
+    if financial_intent_matches and result["category"] != "Fatura / Ödeme":
+        result.update(
+            {
+                "category": "Fatura / Ödeme",
+                "department": "Strateji / Mali İşler",
+                "priority": "Normal",
+                "requires_human_review": False,
+                "confidence_score": max(result.get("confidence_score", 0), 0.84),
+                "contextual_override": True,
+                "context_signal": "Mali işlem eylemi",
+                "matched_keywords": merge_keywords(
+                    result.get("matched_keywords", []),
+                    financial_intent_matches,
+                ),
+                "explanation": (
+                    "Maildeki ana istek ödeme, fatura numarası, tutar veya "
+                    "muhasebe bilgisinin incelenmesi olduğu için Strateji / "
+                    "Mali İşler önerildi."
+                ),
+            }
+        )
+
+    return result
+
+
 def apply_contextual_overrides(result: dict, normalized_text: str, email: dict) -> dict:
     """
     Kategori doğru bulunduktan sonra özel durumlara göre
     öncelik veya insan onayı bilgisini günceller.
     """
+
+    result = apply_intent_routing_overrides(result, normalized_text)
 
     # Kişisel veri ihlali kritik kabul edilir.
     if "veri ihlali" in normalized_text or "ucuncu kisilerle paylasildigini" in normalized_text:

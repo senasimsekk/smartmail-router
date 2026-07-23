@@ -10,12 +10,13 @@ import "@xyflow/react/dist/style.css";
 import "./App.css";
 
 const API_BASE_URL = "http://127.0.0.1:8000";
+const DEMO_WEBMASTER_MAILBOX = "webmaster.rekabet.demo@gmail.com";
 
 const EMPTY_IMPORT_FORM = {
   subject: "",
   sender: "",
   body: "",
-  source_mailbox: "webmaster@rekabet.gov.tr",
+  source_mailbox: DEMO_WEBMASTER_MAILBOX,
   has_attachment: false,
   attachment_names: "",
 };
@@ -1149,8 +1150,8 @@ function App() {
       const result = await request("/emails/ingestion/sync", {
         method: "POST",
         body: JSON.stringify({
-          source_mailbox: "webmaster@rekabet.gov.tr",
-          connector_id: "synthetic_demo",
+          source_mailbox: DEMO_WEBMASTER_MAILBOX,
+          connector_id: "gmail",
           limit: 5,
           actor_role: activeRole,
           process_after_import: true,
@@ -1166,6 +1167,8 @@ function App() {
       setActionMessage(
         result.imported_count > 0
           ? `${result.imported_count} e-posta alındı, analiz edildi ve uygun akışa yönlendirildi.`
+          : result.skipped_ignored_count > 0
+            ? `${result.skipped_ignored_count} sistem bildirimi atlandı. İşlenecek yeni e-posta yok.`
           : "Webmaster posta kutusunda yeni e-posta yok."
       );
       await refreshWorkspace();
@@ -3038,7 +3041,7 @@ function App() {
           <div className="ingestion-header">
             <div>
               <h2>E-posta Alma</h2>
-            <span>webmaster@rekabet.gov.tr ortak kutusu</span>
+            <span>{DEMO_WEBMASTER_MAILBOX} ortak kutusu</span>
           </div>
             <button
               className="secondary-button"

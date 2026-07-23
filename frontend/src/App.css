@@ -1981,6 +1981,10 @@ textarea {
   border-top-color: var(--warning);
 }
 
+.connector-card.configuration_required {
+  border-top-color: var(--danger);
+}
+
 .connector-card strong {
   display: block;
   color: var(--brand-dark);

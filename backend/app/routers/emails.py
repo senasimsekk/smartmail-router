@@ -723,6 +723,8 @@ def sync_mailbox(
         )
     except FileNotFoundError as error:
         raise HTTPException(status_code=500, detail=str(error)) from error
+    except ConnectionError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
     except (NotImplementedError, ValueError) as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
 

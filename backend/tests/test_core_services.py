@@ -15,7 +15,10 @@ from app.services.attachment_analysis_service import (
 )
 from app.services.classification_service import classify_email
 from app.services.dashboard_service import build_operational_report, calculate_rate
-from app.services.email_ingestion_service import normalize_attachment_names
+from app.services.email_ingestion_service import (
+    normalize_attachment_names,
+    should_ignore_connector_message,
+)
 from app.services.email_analysis_service import generate_summary
 from app.services.email_processing_service import determine_processing_routing_decision
 from app.services.evaluation_report_service import build_evaluation_report
@@ -85,6 +88,49 @@ class ClassificationServiceTests(unittest.TestCase):
         self.assertEqual(result["category"], "Teknik Destek")
         self.assertEqual(result["department"], "Bilgi İşlem")
         self.assertEqual(result["priority"], "Düşük")
+
+    def test_routes_kvkk_form_access_problem_to_it_by_intent(self):
+        email = make_email(
+            subject="KVKK başvuru formu açılmıyor",
+            body=(
+                "Portaldaki KVKK başvuru formuna erişemiyorum. "
+                "Form hata veriyor, başvurumu gönderemiyorum."
+            ),
+        )
+
+        result = classify_email(email)
+
+        self.assertEqual(result["category"], "Teknik Destek")
+        self.assertEqual(result["department"], "Bilgi İşlem")
+        self.assertTrue(result["contextual_override"])
+        self.assertIn("ana eylem", result["explanation"])
+
+    def test_routes_invoice_upload_error_to_it_by_intent(self):
+        email = make_email(
+            subject="Fatura yükleme ekranında hata",
+            body="Fatura yükleme ekranı hata veriyor ve belgeyi yükleyemiyorum.",
+        )
+
+        result = classify_email(email)
+
+        self.assertEqual(result["category"], "Teknik Destek")
+        self.assertEqual(result["department"], "Bilgi İşlem")
+        self.assertEqual(result["priority"], "Normal")
+
+    def test_keeps_invoice_payment_question_in_finance(self):
+        email = make_email(
+            subject="Fatura ödeme durumu",
+            body=(
+                "Faturamın ödeme durumunu, tutar bilgisini ve dekont bilgisini "
+                "öğrenmek istiyorum."
+            ),
+        )
+
+        result = classify_email(email)
+
+        self.assertEqual(result["category"], "Fatura / Ödeme")
+        self.assertEqual(result["department"], "Strateji / Mali İşler")
+        self.assertFalse(result["requires_human_review"])
 
 
 class TrainableModelServiceTests(unittest.TestCase):
@@ -587,6 +633,25 @@ class EmailIngestionServiceTests(unittest.TestCase):
     def test_normalizes_empty_attachment_names(self):
         self.assertEqual(normalize_attachment_names(None), [])
 
+    def test_ignores_google_system_notifications(self):
+        self.assertTrue(
+            should_ignore_connector_message(
+                {
+                    "subject": "Security alert",
+                    "sender": "no-reply@accounts.google.com",
+                }
+            )
+        )
+
+        self.assertFalse(
+            should_ignore_connector_message(
+                {
+                    "subject": "KVKK başvuru formu açılmıyor",
+                    "sender": "vatandas@example.com",
+                }
+            )
+        )
+
     def test_synthetic_connector_filters_webmaster_mailbox(self):
         connector = SyntheticMailboxConnector("webmaster@rekabet.gov.tr")
 
@@ -601,10 +666,9 @@ class EmailIngestionServiceTests(unittest.TestCase):
     def test_planned_connector_reports_required_configuration(self):
         connector = build_connector("gmail", "webmaster@rekabet.gov.tr")
 
-        result = connector.test_connection()
+        self.assertIn(connector.config.status, ["configuration_required", "ready"])
+        self.assertIn("MAIL_PASSWORD", connector.config.required_settings)
 
-        self.assertEqual(result["status"], "configuration_required")
-        self.assertIn("OAuth client id", result["required_settings"])
 
     def test_connector_message_normalization_infers_attachment_flag(self):
         result = normalize_connector_message(
@@ -625,7 +689,34 @@ class EmailIngestionServiceTests(unittest.TestCase):
         statuses = {connector["connector_id"]: connector["status"] for connector in overview}
 
         self.assertEqual(statuses["synthetic_demo"], "ready")
-        self.assertEqual(statuses["imap"], "planned")
+        self.assertIn(statuses["imap"], ["configuration_required", "ready"])
+
+    def test_gmail_connector_parses_subject_sender_body_and_attachments(self):
+        connector = build_connector("gmail", "webmaster.rekabet.demo@gmail.com")
+        raw_message = (
+            b"From: =?utf-8?q?Ahmet_Y=C4=B1lmaz?= <ahmet@example.com>\r\n"
+            b"Subject: =?utf-8?q?KVKK_formu_a=C3=A7=C4=B1lm=C4=B1yor?=\r\n"
+            b"MIME-Version: 1.0\r\n"
+            b"Content-Type: multipart/mixed; boundary=demo\r\n"
+            b"\r\n"
+            b"--demo\r\n"
+            b"Content-Type: text/plain; charset=utf-8\r\n"
+            b"\r\n"
+            b"Portaldaki form hata veriyor.\r\n"
+            b"--demo\r\n"
+            b"Content-Type: application/pdf; name=basvuru.pdf\r\n"
+            b"Content-Disposition: attachment; filename=basvuru.pdf\r\n"
+            b"\r\n"
+            b"PDF\r\n"
+            b"--demo--\r\n"
+        )
+
+        result = connector._parse_message(raw_message)
+
+        self.assertEqual(result["subject"], "KVKK formu açılmıyor")
+        self.assertEqual(result["sender"], "ahmet@example.com")
+        self.assertEqual(result["body"], "Portaldaki form hata veriyor.")
+        self.assertEqual(result["attachment_names"], ["basvuru.pdf"])
 
 
 class PreprocessingServiceTests(unittest.TestCase):

@@ -28,6 +28,30 @@ def normalize_attachment_names(attachment_names: list[str] | None) -> list[str]:
     ]
 
 
+SYSTEM_NOTIFICATION_SENDERS = {
+    "no-reply@accounts.google.com",
+    "mail-noreply@google.com",
+    "noreply@google.com",
+}
+
+SYSTEM_NOTIFICATION_SUBJECTS = [
+    "security alert",
+    "2-step verification",
+    "critical security alert",
+    "google account",
+]
+
+
+def should_ignore_connector_message(email_data: dict) -> bool:
+    sender = (email_data.get("sender") or "").lower().strip()
+    subject = (email_data.get("subject") or "").lower().strip()
+
+    if sender in SYSTEM_NOTIFICATION_SENDERS:
+        return True
+
+    return any(keyword in subject for keyword in SYSTEM_NOTIFICATION_SUBJECTS)
+
+
 def email_already_exists(
     db: Session,
     subject: str,
@@ -108,10 +132,15 @@ def sync_mailbox_from_connector(
     imported_emails = []
     processed_results = []
     skipped_duplicates = 0
+    skipped_ignored = 0
 
     for email_data in mailbox_candidates:
         if len(imported_emails) >= limit:
             break
+
+        if should_ignore_connector_message(email_data):
+            skipped_ignored += 1
+            continue
 
         if email_already_exists(
             db=db,
@@ -149,7 +178,7 @@ def sync_mailbox_from_connector(
     create_system_log(
         db=db,
         action_type="MAILBOX_SYNCED",
-        action_detail="Synthetic mailbox was synchronized.",
+        action_detail="Mailbox connector was synchronized.",
         actor="mailbox_sync",
         extra_data={
             "connector_id": connector.config.connector_id,
@@ -158,6 +187,7 @@ def sync_mailbox_from_connector(
             "limit": limit,
             "imported_count": len(imported_emails),
             "skipped_duplicate_count": skipped_duplicates,
+            "skipped_ignored_count": skipped_ignored,
             "candidate_count": len(mailbox_candidates),
         },
     )
@@ -175,6 +205,7 @@ def sync_mailbox_from_connector(
         "candidate_count": len(mailbox_candidates),
         "imported_count": len(imported_emails),
         "skipped_duplicate_count": skipped_duplicates,
+        "skipped_ignored_count": skipped_ignored,
         "imported_emails": imported_emails,
         "processing_results": processed_results,
     }
