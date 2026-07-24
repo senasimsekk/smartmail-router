@@ -12,6 +12,10 @@ from app.services.summary_service import generate_summary
 
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
 DEFAULT_OPENAI_MODEL = "gpt-5.6-luna"
+OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions"
+DEFAULT_OPENROUTER_MODEL = "openrouter/free"
+GEMINI_INTERACTIONS_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
+DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"
 ALLOWED_CATEGORIES = [
     "KVKK Başvurusu",
     "Teknik Destek",
@@ -89,6 +93,34 @@ def get_openai_model() -> str:
     return os.getenv("OPENAI_MODEL", DEFAULT_OPENAI_MODEL)
 
 
+def get_openrouter_api_key() -> str | None:
+    return os.getenv("OPENROUTER_API_KEY")
+
+
+def get_openrouter_model() -> str:
+    return os.getenv("OPENROUTER_MODEL", DEFAULT_OPENROUTER_MODEL)
+
+
+def get_gemini_api_key() -> str | None:
+    return os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+
+
+def get_gemini_model() -> str:
+    return os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
+
+
+def get_llm_provider() -> str:
+    return os.getenv("LLM_PROVIDER", "auto").strip().lower() or "auto"
+
+
+def should_force_external_llm() -> bool:
+    return os.getenv("LLM_FORCE_EXTERNAL", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
 def build_ssl_context():
     try:
         import certifi
@@ -116,6 +148,9 @@ def should_use_ai(rule_classification: dict) -> bool:
         return True
 
     if category in AMBIGUOUS_CATEGORIES and confidence_score < 0.95:
+        return True
+
+    if rule_classification.get("requires_human_review", False):
         return True
 
     return False
@@ -296,7 +331,8 @@ def build_llm_prompt(input_package: dict) -> str:
         "Rekabet Kurumu için kurumsal e-posta sınıflandırma ve özetleme yap. "
         "Sadece izinli kategori ve birimlerden seçim yap. Kritik veya hassas içerikte "
         "insan onayı öner. E-posta gövdesi kısa ve bilgi eklerdeyse bunu özette belirt. "
-        "Yanıtını yalnızca istenen JSON şemasına uygun üret.\n\n"
+        "Yanıtını yalnızca istenen JSON şemasına uygun üret. JSON dışında açıklama, "
+        "markdown veya ek metin yazma; cevap { ile başlayıp } ile bitmelidir.\n\n"
         f"Girdi:\n{json.dumps(input_package, ensure_ascii=False)}"
     )
 
@@ -343,6 +379,91 @@ def extract_response_text(response_data: dict) -> str:
                 text_parts.append(content_item.get("text", ""))
 
     return "".join(text_parts).strip()
+
+
+def extract_gemini_response_text(response_data: dict) -> str:
+    if response_data.get("output_text"):
+        return response_data["output_text"]
+
+    if response_data.get("outputText"):
+        return response_data["outputText"]
+
+    text_parts = []
+
+    for output_item in response_data.get("output", []):
+        for content_item in output_item.get("content", []):
+            if content_item.get("type") in {"output_text", "text"}:
+                text_parts.append(content_item.get("text", ""))
+
+    for step in response_data.get("steps", []):
+        if step.get("type") != "model_output":
+            continue
+
+        for content_item in step.get("content", []):
+            if content_item.get("type") in {"output_text", "text"}:
+                text_parts.append(content_item.get("text", ""))
+
+    for candidate in response_data.get("candidates", []):
+        for part in candidate.get("content", {}).get("parts", []):
+            if part.get("text"):
+                text_parts.append(part["text"])
+
+    return "".join(text_parts).strip()
+
+
+def extract_openrouter_response_text(response_data: dict) -> str:
+    choices = response_data.get("choices", [])
+
+    if not choices:
+        return ""
+
+    first_choice = choices[0]
+
+    if first_choice.get("error"):
+        message = first_choice["error"].get("message", "Unknown provider error.")
+        raise LlmServiceError(f"OpenRouter provider error: {message}")
+
+    message = first_choice.get("message", {})
+    content = message.get("content", "")
+
+    if isinstance(content, str):
+        return content.strip()
+
+    text_parts = []
+
+    for content_item in content:
+        if content_item.get("type") in {"text", "output_text"}:
+            text_parts.append(content_item.get("text", ""))
+
+    return "".join(text_parts).strip()
+
+
+def parse_llm_json_response(response_text: str, provider_name: str) -> dict:
+    cleaned_text = response_text.strip()
+
+    if cleaned_text.startswith("```"):
+        lines = cleaned_text.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].startswith("```"):
+            lines = lines[:-1]
+        cleaned_text = "\n".join(lines).strip()
+
+    try:
+        return json.loads(cleaned_text)
+    except json.JSONDecodeError:
+        pass
+
+    start_index = cleaned_text.find("{")
+    end_index = cleaned_text.rfind("}")
+
+    if start_index != -1 and end_index != -1 and end_index > start_index:
+        try:
+            return json.loads(cleaned_text[start_index : end_index + 1])
+        except json.JSONDecodeError:
+            pass
+
+    raise LlmServiceError(f"{provider_name} API response was not valid JSON.")
 
 
 def call_openai_llm(input_package: dict) -> dict:
@@ -405,10 +526,131 @@ def call_openai_llm(input_package: dict) -> dict:
     if not response_text:
         raise LlmServiceError("OpenAI API returned an empty response.")
 
+    return parse_llm_json_response(response_text, "OpenAI")
+
+
+def call_openrouter_llm(input_package: dict) -> dict:
+    api_key = get_openrouter_api_key()
+
+    if not api_key:
+        raise LlmServiceError("OPENROUTER_API_KEY is not configured.")
+
+    payload = {
+        "model": get_openrouter_model(),
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "Kurumsal e-posta operasyonları için güvenli ve denetlenebilir "
+                    "sınıflandırma yapan bir asistansın. Kişisel verileri gereksiz "
+                    "tekrar etme, sadece operasyonel özet ve yönlendirme gerekçesi üret."
+                ),
+            },
+            {
+                "role": "user",
+                "content": build_llm_prompt(input_package),
+            },
+        ],
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "smartmail_llm_analysis",
+                "schema": get_llm_response_schema(),
+                "strict": True,
+            },
+        },
+        "temperature": 0.1,
+        "max_tokens": 700,
+    }
+
+    request = urllib.request.Request(
+        OPENROUTER_CHAT_COMPLETIONS_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": os.getenv("OPENROUTER_SITE_URL", "http://127.0.0.1:5173"),
+            "X-OpenRouter-Title": os.getenv("OPENROUTER_APP_TITLE", "SmartMail Router"),
+        },
+        method="POST",
+    )
+
     try:
-        return json.loads(response_text)
-    except json.JSONDecodeError as error:
-        raise LlmServiceError("OpenAI API response was not valid JSON.") from error
+        with urllib.request.urlopen(
+            request,
+            timeout=20,
+            context=build_ssl_context(),
+        ) as response:
+            response_data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", errors="ignore")
+        raise LlmServiceError(f"OpenRouter API returned {error.code}: {detail}") from error
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
+        raise LlmServiceError(f"OpenRouter API request failed: {error}") from error
+
+    if response_data.get("error"):
+        message = response_data["error"].get("message", "Unknown OpenRouter error.")
+        raise LlmServiceError(f"OpenRouter API error: {message}")
+
+    response_text = extract_openrouter_response_text(response_data)
+
+    if not response_text:
+        raise LlmServiceError("OpenRouter API returned an empty response.")
+
+    return parse_llm_json_response(response_text, "OpenRouter")
+
+
+def call_gemini_llm(input_package: dict) -> dict:
+    api_key = get_gemini_api_key()
+
+    if not api_key:
+        raise LlmServiceError("GEMINI_API_KEY is not configured.")
+
+    prompt = (
+        "Kurumsal e-posta operasyonları için güvenli ve denetlenebilir "
+        "sınıflandırma yapan bir asistansın. Kişisel verileri gereksiz "
+        "tekrar etme, sadece operasyonel özet ve yönlendirme gerekçesi üret.\n\n"
+        f"{build_llm_prompt(input_package)}"
+    )
+    payload = {
+        "model": get_gemini_model(),
+        "input": prompt,
+        "response_format": {
+            "type": "text",
+            "mime_type": "application/json",
+            "schema": get_llm_response_schema(),
+        },
+    }
+
+    request = urllib.request.Request(
+        GEMINI_INTERACTIONS_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "x-goog-api-key": api_key,
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(
+            request,
+            timeout=20,
+            context=build_ssl_context(),
+        ) as response:
+            response_data = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as error:
+        detail = error.read().decode("utf-8", errors="ignore")
+        raise LlmServiceError(f"Gemini API returned {error.code}: {detail}") from error
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as error:
+        raise LlmServiceError(f"Gemini API request failed: {error}") from error
+
+    response_text = extract_gemini_response_text(response_data)
+
+    if not response_text:
+        raise LlmServiceError("Gemini API returned an empty response.")
+
+    return parse_llm_json_response(response_text, "Gemini")
 
 
 def normalize_llm_result(
@@ -462,30 +704,76 @@ def normalize_llm_result(
 
 def classify_email_with_llm_or_demo(email: dict, rule_classification: dict) -> tuple[dict, dict]:
     input_package = build_llm_input_package(email, rule_classification)
+    provider = get_llm_provider()
+    provider_attempts = []
 
-    try:
-        llm_result = call_openai_llm(input_package)
-        return normalize_llm_result(
-            llm_result=llm_result,
-            email=email,
-            rule_classification=rule_classification,
-            source="openai_api",
-        ), {
-            "provider": "OpenAI",
-            "model": get_openai_model(),
-            "status": "connected",
-        }
-    except LlmServiceError as error:
-        demo_result = mock_ai_classify_email(
-            email=email,
-            rule_classification=rule_classification,
+    if provider == "gemini":
+        provider_attempts.append(("Gemini", get_gemini_model(), call_gemini_llm))
+    elif provider == "openrouter":
+        provider_attempts.append(
+            ("OpenRouter", get_openrouter_model(), call_openrouter_llm)
         )
-        return demo_result, {
-            "provider": "OpenAI",
-            "model": get_openai_model(),
-            "status": "demo_fallback",
-            "reason": str(error),
-        }
+    elif provider == "openai":
+        provider_attempts.append(("OpenAI", get_openai_model(), call_openai_llm))
+    else:
+        if get_openrouter_api_key():
+            provider_attempts.append(
+                ("OpenRouter", get_openrouter_model(), call_openrouter_llm)
+            )
+        if get_gemini_api_key():
+            provider_attempts.append(("Gemini", get_gemini_model(), call_gemini_llm))
+        if get_openai_api_key():
+            provider_attempts.append(("OpenAI", get_openai_model(), call_openai_llm))
+
+    errors = []
+
+    for provider_name, model_name, caller in provider_attempts:
+        try:
+            llm_result = caller(input_package)
+            return normalize_llm_result(
+                llm_result=llm_result,
+                email=email,
+                rule_classification=rule_classification,
+                source=f"{provider_name.lower()}_api",
+            ), {
+                "provider": provider_name,
+                "model": model_name,
+                "status": "connected",
+            }
+        except LlmServiceError as error:
+            errors.append(f"{provider_name}: {error}")
+
+    demo_result = mock_ai_classify_email(
+        email=email,
+        rule_classification=rule_classification,
+    )
+    fallback_provider = provider_attempts[0][0] if provider_attempts else "No external LLM"
+    fallback_model = provider_attempts[0][1] if provider_attempts else "-"
+
+    return demo_result, {
+        "provider": fallback_provider,
+        "model": fallback_model,
+        "status": "demo_fallback",
+        "reason": " | ".join(errors) if errors else "No LLM API key configured.",
+    }
+
+
+def classify_email_with_demo_only(
+    email: dict,
+    rule_classification: dict,
+    reason: str,
+) -> tuple[dict, dict]:
+    demo_result = mock_ai_classify_email(
+        email=email,
+        rule_classification=rule_classification,
+    )
+
+    return demo_result, {
+        "provider": "External LLM",
+        "model": "-",
+        "status": "skipped",
+        "reason": reason,
+    }
 
 
 def compare_rule_and_ai_results(
@@ -567,10 +855,20 @@ def analyze_email_with_mock_ai(email: dict, rule_classification: dict) -> dict:
     ai_recommended = should_use_ai(rule_classification)
     ai_usage_reason = get_ai_usage_reason(rule_classification)
 
-    ai_classification, llm_connection = classify_email_with_llm_or_demo(
-        email=email,
-        rule_classification=rule_classification,
-    )
+    if ai_recommended or should_force_external_llm():
+        ai_classification, llm_connection = classify_email_with_llm_or_demo(
+            email=email,
+            rule_classification=rule_classification,
+        )
+    else:
+        ai_classification, llm_connection = classify_email_with_demo_only(
+            email=email,
+            rule_classification=rule_classification,
+            reason=(
+                "Kural tabanlı sonuç yeterince güvenilir olduğu için dış LLM çağrısı "
+                "yapılmadı; kota korumak amacıyla yerel demo analizi kullanıldı."
+            ),
+        )
 
     comparison = compare_rule_and_ai_results(
         rule_classification=rule_classification,

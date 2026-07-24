@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 from types import SimpleNamespace
 
-from app.services.ai_service import analyze_email_with_mock_ai
+from app.services.ai_service import analyze_email_with_mock_ai, parse_llm_json_response
 from app.services.authorization_service import (
     get_available_roles,
     role_has_permission,
@@ -287,7 +287,17 @@ class EmailAnalysisServiceTests(unittest.TestCase):
 
 
 class AiServiceTests(unittest.TestCase):
-    def test_uses_demo_llm_fallback_without_openai_key(self):
+    def test_parses_llm_json_from_markdown_response(self):
+        response = """```json
+{"category": "Şikayet", "department": "İlgili Uzman Daire"}
+```"""
+
+        parsed_response = parse_llm_json_response(response, "OpenRouter")
+
+        self.assertEqual(parsed_response["category"], "Şikayet")
+        self.assertEqual(parsed_response["department"], "İlgili Uzman Daire")
+
+    def test_skips_external_llm_when_rule_result_is_confident(self):
         email = make_email(
             subject="Portal giriş hatası",
             body="Portal girişinde şifre hatası alıyorum.",
@@ -305,11 +315,128 @@ class AiServiceTests(unittest.TestCase):
             result = analyze_email_with_mock_ai(email, classification)
 
         self.assertEqual(result["ai_mode"], "demo")
-        self.assertEqual(result["llm_connection"]["status"], "demo_fallback")
+        self.assertEqual(result["llm_connection"]["status"], "skipped")
         self.assertEqual(
             result["llm_classification"]["ai_department"],
             "Bilgi İşlem",
         )
+
+    def test_uses_demo_llm_fallback_when_external_llm_is_recommended_without_key(self):
+        email = make_email(
+            subject="Genel başvuru",
+            body="Başvurumun hangi birim tarafından değerlendirileceği hakkında bilgi istiyorum.",
+        )
+        classification = {
+            "category": "Genel Başvuru",
+            "department": "Evrak Kayıt",
+            "priority": "Normal",
+            "requires_human_review": False,
+            "confidence_score": 0.72,
+            "matched_keywords": ["başvuru"],
+        }
+
+        with patch.dict("os.environ", {}, clear=True):
+            result = analyze_email_with_mock_ai(email, classification)
+
+        self.assertEqual(result["ai_mode"], "demo")
+        self.assertEqual(result["llm_connection"]["status"], "demo_fallback")
+        self.assertEqual(
+            result["llm_classification"]["ai_department"],
+            "Evrak Kayıt",
+        )
+
+    def test_uses_gemini_when_api_key_is_configured(self):
+        email = make_email(
+            subject="Basın açıklaması talebi",
+            body="Son karar hakkında resmi basın açıklaması rica ediyoruz.",
+        )
+        classification = {
+            "category": "Basın Talebi",
+            "department": "Basın ve Halkla İlişkiler",
+            "priority": "Yüksek",
+            "requires_human_review": False,
+            "confidence_score": 0.82,
+            "matched_keywords": ["basın açıklaması"],
+        }
+        gemini_response = {
+            "category": "Basın Talebi",
+            "department": "Basın ve Halkla İlişkiler",
+            "priority": "Yüksek",
+            "confidence_score": 0.93,
+            "requires_human_review": False,
+            "summary": "Gazeteci son karar hakkında resmi basın açıklaması istiyor.",
+            "explanation": "Talep basın açıklamasıyla ilgili olduğu için ilgili birim seçildi.",
+            "evidence": ["basın açıklaması", "son karar"],
+        }
+
+        with patch.dict(
+            "os.environ",
+            {
+                "LLM_PROVIDER": "gemini",
+                "GEMINI_API_KEY": "test-key",
+                "GEMINI_MODEL": "gemini-test-model",
+            },
+            clear=True,
+        ), patch(
+            "app.services.ai_service.call_gemini_llm",
+            return_value=gemini_response,
+        ) as call_gemini:
+            result = analyze_email_with_mock_ai(email, classification)
+
+        call_gemini.assert_called_once()
+        self.assertEqual(result["ai_mode"], "gemini_api")
+        self.assertEqual(result["llm_connection"]["provider"], "Gemini")
+        self.assertEqual(result["llm_connection"]["status"], "connected")
+        self.assertEqual(result["llm_connection"]["model"], "gemini-test-model")
+        self.assertEqual(
+            result["llm_classification"]["ai_department"],
+            "Basın ve Halkla İlişkiler",
+        )
+
+    def test_uses_openrouter_when_api_key_is_configured(self):
+        email = make_email(
+            subject="Haksız fiyat uygulaması hakkında şikayet",
+            body="Piyasadaki haksız fiyat uygulaması hakkında inceleme talep ediyoruz.",
+        )
+        classification = {
+            "category": "Şikayet",
+            "department": "İlgili Uzman Daire",
+            "priority": "Normal",
+            "requires_human_review": False,
+            "confidence_score": 0.82,
+            "matched_keywords": ["şikayet", "haksız fiyat"],
+        }
+        openrouter_response = {
+            "category": "Şikayet",
+            "department": "İlgili Uzman Daire",
+            "priority": "Normal",
+            "confidence_score": 0.89,
+            "requires_human_review": True,
+            "summary": "Başvuru sahibi haksız fiyat uygulaması için inceleme talep ediyor.",
+            "explanation": "İçerik rekabet şikayeti niteliği taşıdığı için uzman daire seçildi.",
+            "evidence": ["haksız fiyat", "inceleme talebi"],
+        }
+
+        with patch.dict(
+            "os.environ",
+            {
+                "LLM_PROVIDER": "openrouter",
+                "OPENROUTER_API_KEY": "test-key",
+                "OPENROUTER_MODEL": "openrouter-test-model",
+            },
+            clear=True,
+        ), patch(
+            "app.services.ai_service.call_openrouter_llm",
+            return_value=openrouter_response,
+        ) as call_openrouter:
+            result = analyze_email_with_mock_ai(email, classification)
+
+        call_openrouter.assert_called_once()
+        self.assertEqual(result["ai_mode"], "openrouter_api")
+        self.assertEqual(result["llm_connection"]["provider"], "OpenRouter")
+        self.assertEqual(result["llm_connection"]["status"], "connected")
+        self.assertEqual(result["llm_connection"]["model"], "openrouter-test-model")
+        self.assertTrue(result["llm_classification"]["ai_requires_human_review"])
 
 
 class EvaluationReportServiceTests(unittest.TestCase):
