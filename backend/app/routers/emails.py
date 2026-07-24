@@ -29,6 +29,7 @@ from app.services.integration_service import (
     test_integration_connection,
 )
 from app.services.pipeline_service import build_email_pipeline
+from app.services.notification_service import build_sla_notifications
 from app.services.attachment_text_extraction_service import (
     save_attachment_and_extract_text,
 )
@@ -250,6 +251,14 @@ def get_emails(db: Session = Depends(get_db)):
 @router.get("/ingestion/overview")
 def get_ingestion_overview(db: Session = Depends(get_db)):
     return get_email_ingestion_overview(db)
+
+
+@router.get("/notifications/sla")
+def get_sla_notifications(db: Session = Depends(get_db)):
+    email_records = get_all_emails_from_db(db)
+    return build_sla_notifications(email_records)
+
+
 @router.get("/ingestion/mailboxes")
 def get_ingestion_mailboxes(db: Session = Depends(get_db)):
     return {

@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from app.services.ai_service import (
     analyze_email_with_mock_ai,
     build_llm_input_package,
+    extract_openrouter_response_text,
     parse_llm_json_response,
 )
 from app.services.authorization_service import (
@@ -38,6 +39,7 @@ from app.services.mail_connector_service import (
     get_mail_connector_overview,
     normalize_connector_message,
 )
+from app.services.notification_service import build_sla_notifications
 from app.services.pipeline_service import build_email_pipeline
 from app.services.preprocessing_service import preprocess_email
 from app.services.sla_service import calculate_sla
@@ -357,6 +359,21 @@ class AiServiceTests(unittest.TestCase):
         self.assertEqual(parsed_response["category"], "Şikayet")
         self.assertEqual(parsed_response["department"], "İlgili Uzman Daire")
 
+    def test_openrouter_empty_content_is_handled_as_empty_response(self):
+        response_text = extract_openrouter_response_text(
+            {
+                "choices": [
+                    {
+                        "message": {
+                            "content": None,
+                        }
+                    }
+                ]
+            }
+        )
+
+        self.assertEqual(response_text, "")
+
     def test_skips_external_llm_when_rule_result_is_confident(self):
         email = make_email(
             subject="Portal giriş hatası",
@@ -586,6 +603,63 @@ class SlaServiceTests(unittest.TestCase):
 
         self.assertEqual(sla["status"], "Closed")
         self.assertEqual(sla["status_label"], "Kapandı")
+
+
+class NotificationServiceTests(unittest.TestCase):
+    def test_builds_sla_notifications_for_overdue_and_due_soon_records(self):
+        email_records = [
+            SimpleNamespace(
+                id=1,
+                subject="Mahkeme tebligatı",
+                sender="mahkeme@example.com",
+                body="Mahkeme tebligatı ve savunma süresi hakkında yazı.",
+                source_mailbox="webmaster@rekabet.gov.tr",
+                has_attachment=False,
+                attachment_names=[],
+                attachment_texts=[],
+                expected_category=None,
+                expected_department=None,
+                expected_priority=None,
+                requires_human_review=False,
+                routing_status="New",
+                approved_department=None,
+                approved_by=None,
+                approved_at=None,
+                routing_note=None,
+                created_at=datetime(2026, 7, 10, 10, 0, 0),
+            ),
+            SimpleNamespace(
+                id=2,
+                subject="Portal giriş hatası",
+                sender="vatandas@example.com",
+                body="Portal girişinde hata alıyorum.",
+                source_mailbox="webmaster@rekabet.gov.tr",
+                has_attachment=False,
+                attachment_names=[],
+                attachment_texts=[],
+                expected_category=None,
+                expected_department=None,
+                expected_priority=None,
+                requires_human_review=False,
+                routing_status="Routed",
+                approved_department="Bilgi İşlem",
+                approved_by="operator",
+                approved_at=datetime(2026, 7, 15, 11, 0, 0),
+                routing_note=None,
+                created_at=datetime(2026, 7, 14, 10, 0, 0),
+            ),
+        ]
+
+        notifications = build_sla_notifications(
+            email_records,
+            now=datetime(2026, 7, 16, 12, 0, 0),
+        )
+
+        self.assertEqual(notifications["summary"]["total"], 1)
+        self.assertEqual(notifications["summary"]["overdue"], 1)
+        self.assertEqual(notifications["notifications"][0]["email_id"], 1)
+        self.assertEqual(notifications["notifications"][0]["tone"], "danger")
+        self.assertIn("SLA süresi aşıldı", notifications["notifications"][0]["reason"])
 
 
 class AuthorizationServiceTests(unittest.TestCase):

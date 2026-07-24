@@ -881,6 +881,10 @@ function App() {
   const [operationalDashboard, setOperationalDashboard] = useState(null);
   const [managementReport, setManagementReport] = useState(null);
   const [evaluationReport, setEvaluationReport] = useState(null);
+  const [slaNotifications, setSlaNotifications] = useState({
+    summary: { total: 0, overdue: 0, due_soon: 0, critical: 0 },
+    notifications: [],
+  });
   const [ingestionOverview, setIngestionOverview] = useState(null);
   const [pendingReview, setPendingReview] = useState([]);
   const [feedbackData, setFeedbackData] = useState({
@@ -1021,6 +1025,7 @@ function App() {
         operationalData,
         reportData,
         evaluationData,
+        notificationData,
         ingestionData,
         pendingData,
         feedbackResult,
@@ -1032,6 +1037,7 @@ function App() {
           request("/emails/dashboard/operational"),
           request("/emails/reports/management"),
           request("/emails/evaluation/report"),
+          request("/emails/notifications/sla"),
           request("/emails/ingestion/overview"),
           request("/emails/review/pending"),
           request("/emails/feedback/all"),
@@ -1043,6 +1049,7 @@ function App() {
       setOperationalDashboard(operationalData);
       setManagementReport(reportData);
       setEvaluationReport(evaluationData);
+      setSlaNotifications(notificationData);
       setIngestionOverview(ingestionData);
       setPendingReview(pendingData.pending_emails || []);
       setFeedbackData(feedbackResult);
@@ -1668,6 +1675,8 @@ function App() {
     aiAnalysis.llm_classification || aiAnalysis.mock_ai_classification || {};
   const llmConnection = aiAnalysis.llm_connection || {};
   const reportKpis = managementReport?.kpis || {};
+  const notificationSummary = slaNotifications?.summary || {};
+  const visibleSlaNotifications = slaNotifications?.notifications?.slice(0, 5) || [];
   const evaluationSummary = evaluationReport?.summary || {};
   const modelMetadata = modelStatus.metadata || {};
   const modelLabelDistribution = modelMetadata.label_distribution || {};
@@ -1763,6 +1772,41 @@ function App() {
               value={dashboard?.critical_risk_count ?? 0}
               tone="danger"
             />
+          </div>
+
+          <div className="notification-center">
+            <div className="notification-center-head">
+              <div>
+                <p className="eyebrow">Bildirim Mekanizması</p>
+                <h2>SLA Uyarıları</h2>
+              </div>
+              <div className="notification-summary">
+                <span>{notificationSummary.total ?? 0} bildirim</span>
+                <strong>{notificationSummary.critical ?? 0} kritik</strong>
+              </div>
+            </div>
+
+            {visibleSlaNotifications.length > 0 ? (
+              <div className="notification-list">
+                {visibleSlaNotifications.map((notification) => (
+                  <button
+                    className={`notification-item ${notification.tone}`}
+                    key={notification.id}
+                    type="button"
+                    onClick={() => setSelectedEmailId(notification.email_id)}
+                  >
+                    <div>
+                      <strong>{notification.subject}</strong>
+                      <span>{notification.department} · {notification.sla_status_label}</span>
+                    </div>
+                    <p>{notification.reason}</p>
+                    <em>{formatRemainingDays(notification.remaining_days)}</em>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="muted">SLA veya kritik risk bildirimi bulunmuyor.</p>
+            )}
           </div>
         </section>
       )}

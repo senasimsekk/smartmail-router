@@ -473,6 +473,9 @@ def extract_openrouter_response_text(response_data: dict) -> str:
     message = first_choice.get("message", {})
     content = message.get("content", "")
 
+    if content is None:
+        return ""
+
     if isinstance(content, str):
         return content.strip()
 
