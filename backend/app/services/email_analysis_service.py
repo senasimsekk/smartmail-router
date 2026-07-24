@@ -1,7 +1,7 @@
 from app.services.attachment_analysis_service import analyze_attachments
 from app.services.classification_service import normalize_text
 from app.services.preprocessing_service import build_classification_text
-from app.services.summary_service import generate_summary
+from app.services.summary_service import generate_summary, build_summary_strategy
 from app.services.sla_service import calculate_sla
 
 
@@ -230,6 +230,7 @@ def suggest_action(
 
 def analyze_email(email: dict, classification: dict) -> dict:
     summary = generate_summary(email, classification)
+    summary_strategy = build_summary_strategy(email, classification)
     risk_analysis = detect_risk(email, classification)
     response_analysis = detect_response_requirement(classification)
     attachment_analysis = analyze_attachments(email, classification)
@@ -254,6 +255,7 @@ def analyze_email(email: dict, classification: dict) -> dict:
 
     return {
         "summary": summary,
+        "summary_strategy": summary_strategy,
         "risk_level": risk_analysis["risk_level"],
         "risk_reasons": risk_analysis["risk_reasons"],
         "needs_response": response_analysis["needs_response"],

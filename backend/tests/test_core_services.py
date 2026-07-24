@@ -5,7 +5,11 @@ from pathlib import Path
 from unittest.mock import patch
 from types import SimpleNamespace
 
-from app.services.ai_service import analyze_email_with_mock_ai, parse_llm_json_response
+from app.services.ai_service import (
+    analyze_email_with_mock_ai,
+    build_llm_input_package,
+    parse_llm_json_response,
+)
 from app.services.authorization_service import (
     get_available_roles,
     role_has_permission,
@@ -37,6 +41,7 @@ from app.services.mail_connector_service import (
 from app.services.pipeline_service import build_email_pipeline
 from app.services.preprocessing_service import preprocess_email
 from app.services.sla_service import calculate_sla
+from app.services.summary_service import build_summary_strategy
 from app.services.ticket_service import build_record_number, derive_ticket_status
 from app.services.trainable_model_service import (
     extract_tfidf_evidence,
@@ -284,6 +289,61 @@ class EmailAnalysisServiceTests(unittest.TestCase):
         self.assertIn("uzun-inceleme.pdf", summary)
         self.assertIn("parça", summary)
         self.assertIn("RK-2026-778", summary)
+
+    def test_large_attachment_strategy_limits_llm_context_to_selected_chunks(self):
+        filler = (
+            "Genel değerlendirme bölümünde pazar yapısı ve önceki yazışmalar açıklanmaktadır. "
+            "Bu bölüm destekleyici bilgi niteliğindedir. "
+        )
+        long_attachment_text = (
+            "Başvuruda ilgili pazarda rekabet ihlali iddiası anlatılmaktadır. "
+            + filler * 10
+            + "Dosya numarası RK-2026-778 olan incelemede 12/07/2026 tarihli yazı "
+            "kapsamında şirketlerden savunma istenmektedir. "
+            + filler * 10
+            + "Konunun incelenmesini ve ilgili uzman daireye aktarılmasını talep ederiz."
+        )
+        email = make_email(
+            subject="Uzun ekli rekabet ihlali başvurusu",
+            body="Merhaba, ayrıntılı açıklamalar ekte sunulmuştur.",
+            has_attachment=True,
+            attachment_names=["uzun-inceleme.pdf"],
+            attachment_texts=[
+                {
+                    "filename": "uzun-inceleme.pdf",
+                    "extracted_text": long_attachment_text,
+                }
+            ],
+        )
+        classification = {
+            "category": "Şikayet",
+            "department": "İlgili Uzman Daire",
+            "priority": "Yüksek",
+            "requires_human_review": True,
+            "confidence_score": 0.89,
+            "matched_keywords": ["rekabet ihlali", "incelenmesini"],
+        }
+
+        strategy = build_summary_strategy(email, classification)
+        large_attachment_strategy = strategy["large_attachment_strategy"]
+        llm_input = build_llm_input_package(email, classification)
+        llm_attachment = llm_input["attachments"]["attachment_texts"][0]
+
+        self.assertTrue(large_attachment_strategy["enabled"])
+        self.assertGreater(
+            large_attachment_strategy["attachments"][0]["chunk_count"],
+            1,
+        )
+        self.assertTrue(large_attachment_strategy["attachments"][0]["selected_chunks"])
+        self.assertEqual(
+            llm_attachment["extraction_strategy"],
+            "chunked_large_attachment",
+        )
+        self.assertLess(
+            len(llm_attachment["extracted_text"]),
+            len(long_attachment_text) / 2,
+        )
+        self.assertIn("RK-2026-778", llm_attachment["extracted_text"])
 
 
 class AiServiceTests(unittest.TestCase):

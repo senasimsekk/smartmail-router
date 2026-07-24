@@ -180,6 +180,23 @@ def build_classification_step(email: dict, classification: dict) -> dict:
 
 def build_summary_step(analysis: dict) -> dict:
     summary = analysis.get("summary", "")
+    summary_strategy = analysis.get("summary_strategy", {})
+    large_attachment_strategy = summary_strategy.get("large_attachment_strategy", {})
+    evidence = []
+
+    if summary:
+        evidence.append(summary[:220] + ("..." if len(summary) > 220 else ""))
+
+    for attachment in large_attachment_strategy.get("attachments", []):
+        selected_chunks = attachment.get("selected_chunks") or []
+        selected_text = (
+            f"; seçilen parçalar: {', '.join(str(chunk) for chunk in selected_chunks)}"
+            if selected_chunks
+            else ""
+        )
+        evidence.append(
+            f"{attachment.get('filename')} {attachment.get('chunk_count')} parçaya bölündü{selected_text}"
+        )
 
     return build_step(
         step_id="summary",
@@ -188,9 +205,7 @@ def build_summary_step(analysis: dict) -> dict:
         detail="Mail gövdesi ve ek metni sinyallerinden karar destek özeti üretildi."
         if summary
         else "Özet henüz üretilemedi.",
-        evidence=[summary[:220] + ("..." if len(summary) > 220 else "")]
-        if summary
-        else [],
+        evidence=evidence,
     )
 
 

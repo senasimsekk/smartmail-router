@@ -403,19 +403,103 @@ def select_relevant_sentences(email: dict, classification: dict, max_sentences: 
     return selected
 
 
-def build_large_attachment_note(selected_sentences: list[dict]) -> str:
-    large_attachment_counts = {}
+def build_large_attachment_chunk_report(
+    email: dict,
+    classification: dict,
+    selected_sentences: list[dict] | None = None,
+) -> dict:
+    selected_sentences = selected_sentences or select_relevant_sentences(
+        email,
+        classification,
+        max_sentences=MAX_LARGE_ATTACHMENT_CHUNK_SUMMARIES,
+    )
+    large_attachments = []
 
-    for item in selected_sentences:
-        if item.get("is_large_attachment"):
-            large_attachment_counts[item["filename"]] = item["chunk_count"]
+    for attachment in get_attachment_text_entries(email):
+        if not attachment["is_large"]:
+            continue
 
-    if not large_attachment_counts:
+        sentences = split_summary_sentences(attachment["text"])
+        chunks = chunk_sentences_by_length(sentences, ATTACHMENT_CHUNK_CHAR_LIMIT)
+        selected_for_attachment = [
+            item
+            for item in selected_sentences
+            if item.get("is_large_attachment")
+            and item.get("filename") == attachment["filename"]
+        ]
+
+        large_attachments.append(
+            {
+                "filename": attachment["filename"],
+                "text_length": len(attachment["text"]),
+                "chunk_count": max(len(chunks), 1),
+                "chunk_char_limit": ATTACHMENT_CHUNK_CHAR_LIMIT,
+                "selected_chunks": sorted(
+                    {
+                        item["chunk_index"]
+                        for item in selected_for_attachment
+                        if item.get("chunk_index")
+                    }
+                ),
+                "selected_evidence": [
+                    {
+                        "chunk_index": item.get("chunk_index"),
+                        "sentence": item.get("sentence"),
+                        "score": round(item.get("score", 0), 2),
+                    }
+                    for item in selected_for_attachment
+                ],
+            }
+        )
+
+    return {
+        "enabled": bool(large_attachments),
+        "threshold_chars": LARGE_ATTACHMENT_TEXT_THRESHOLD,
+        "chunk_char_limit": ATTACHMENT_CHUNK_CHAR_LIMIT,
+        "max_selected_sentences": MAX_LARGE_ATTACHMENT_CHUNK_SUMMARIES,
+        "attachments": large_attachments,
+    }
+
+
+def build_summary_strategy(email: dict, classification: dict) -> dict:
+    selected_sentences = select_relevant_sentences(
+        email,
+        classification,
+        max_sentences=MAX_LARGE_ATTACHMENT_CHUNK_SUMMARIES,
+    )
+
+    return {
+        "method": "TF-IDF destekli parça bazlı bağlam seçimi",
+        "body_and_attachment_text_used": True,
+        "selected_context_count": len(selected_sentences),
+        "selected_context": [
+            {
+                "source": item.get("source"),
+                "filename": item.get("filename"),
+                "chunk_index": item.get("chunk_index"),
+                "chunk_count": item.get("chunk_count"),
+                "sentence": item.get("sentence"),
+                "score": round(item.get("score", 0), 2),
+            }
+            for item in selected_sentences
+        ],
+        "large_attachment_strategy": build_large_attachment_chunk_report(
+            email,
+            classification,
+            selected_sentences=selected_sentences,
+        ),
+    }
+
+
+def build_large_attachment_note(chunk_report: dict) -> str:
+    large_attachments = chunk_report.get("attachments", [])
+
+    if not large_attachments:
         return ""
 
     notes = [
-        f"{filename} {chunk_count} parçaya ayrılarak tarandı"
-        for filename, chunk_count in large_attachment_counts.items()
+        f"{item['filename']} {item['chunk_count']} parçaya ayrılarak tarandı"
+        for item in large_attachments
     ]
 
     return f"Büyük ek metni parça bazlı özetlendi: {'; '.join(notes)}."
@@ -462,7 +546,12 @@ def generate_summary(email: dict, classification: dict) -> str:
         classification,
         max_sentences=MAX_LARGE_ATTACHMENT_CHUNK_SUMMARIES,
     )
-    large_attachment_note = build_large_attachment_note(selected_sentences)
+    chunk_report = build_large_attachment_chunk_report(
+        email,
+        classification,
+        selected_sentences=selected_sentences,
+    )
+    large_attachment_note = build_large_attachment_note(chunk_report)
     context_sentence = build_context_sentence(selected_sentences)
 
     summary_parts = [

@@ -7,7 +7,7 @@ import urllib.request
 from app.services.classification_service import normalize_text
 from app.services.information_extraction_service import extract_structured_information
 from app.services.preprocessing_service import build_classification_text
-from app.services.summary_service import generate_summary
+from app.services.summary_service import generate_summary, build_summary_strategy
 
 
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
@@ -306,6 +306,57 @@ def mock_ai_classify_email(email: dict, rule_classification: dict) -> dict:
     }
 
 
+def build_llm_attachment_context(email: dict, rule_classification: dict) -> dict:
+    summary_strategy = build_summary_strategy(email, rule_classification)
+    large_attachment_strategy = summary_strategy.get("large_attachment_strategy", {})
+    large_reports = {
+        item["filename"]: item
+        for item in large_attachment_strategy.get("attachments", [])
+    }
+    attachment_texts = []
+
+    for index, item in enumerate(email.get("attachment_texts", []) or [], start=1):
+        if not isinstance(item, dict):
+            continue
+
+        filename = item.get("filename") or f"Ek {index}"
+        extracted_text = item.get("extracted_text", "")
+        large_report = large_reports.get(filename)
+
+        if large_report:
+            selected_text = " ".join(
+                evidence.get("sentence", "")
+                for evidence in large_report.get("selected_evidence", [])
+                if evidence.get("sentence")
+            )
+            attachment_texts.append(
+                {
+                    "filename": filename,
+                    "extraction_strategy": "chunked_large_attachment",
+                    "text_length": large_report.get("text_length"),
+                    "chunk_count": large_report.get("chunk_count"),
+                    "selected_chunks": large_report.get("selected_chunks"),
+                    "extracted_text": selected_text or extracted_text[:1200],
+                }
+            )
+            continue
+
+        attachment_texts.append(
+            {
+                "filename": filename,
+                "extraction_strategy": "full_text",
+                "extracted_text": extracted_text,
+            }
+        )
+
+    return {
+        "has_attachment": email.get("has_attachment", False),
+        "attachment_names": email.get("attachment_names", []),
+        "attachment_texts": attachment_texts,
+        "summary_strategy": summary_strategy,
+    }
+
+
 def build_llm_input_package(email: dict, rule_classification: dict) -> dict:
     extracted_information = extract_structured_information(email, rule_classification)
 
@@ -314,11 +365,7 @@ def build_llm_input_package(email: dict, rule_classification: dict) -> dict:
         "sender": email.get("sender"),
         "source_mailbox": email.get("source_mailbox"),
         "body": email.get("body"),
-        "attachments": {
-            "has_attachment": email.get("has_attachment", False),
-            "attachment_names": email.get("attachment_names", []),
-            "attachment_texts": email.get("attachment_texts", []),
-        },
+        "attachments": build_llm_attachment_context(email, rule_classification),
         "rule_based_classification": rule_classification,
         "extracted_information": extracted_information,
         "allowed_categories": ALLOWED_CATEGORIES,
