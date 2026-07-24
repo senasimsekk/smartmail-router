@@ -910,6 +910,68 @@ textarea {
   font-size: 13px;
 }
 
+.advanced-filter-panel {
+  margin-bottom: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.advanced-filter-panel summary {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  padding: 8px 10px;
+  color: var(--brand-dark);
+  font-size: 13px;
+  font-weight: 800;
+  list-style: none;
+}
+
+.advanced-filter-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced-filter-panel summary strong {
+  min-width: 24px;
+  border-radius: 999px;
+  background: #fff6f6;
+  color: var(--brand);
+  padding: 3px 7px;
+  text-align: center;
+  font-size: 12px;
+}
+
+.advanced-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding: 10px;
+}
+
+.advanced-filter-grid label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.advanced-filter-grid select {
+  min-height: 34px;
+  padding: 7px 8px;
+  font-size: 12px;
+}
+
+.advanced-filter-grid button {
+  grid-column: 1 / -1;
+  min-height: 34px;
+}
+
 .queue-item {
   width: 100%;
   min-height: 72px;
@@ -959,6 +1021,28 @@ textarea {
 .status-row {
   display: flex;
   font-size: 12px;
+}
+
+.queue-classification-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.queue-classification-row span {
+  min-width: 0;
+  color: var(--brand-dark);
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-classification-row strong {
+  flex: 0 0 auto;
+  color: var(--muted);
 }
 
 .sla-row {
@@ -1280,6 +1364,31 @@ textarea {
 
 .text-block {
   margin-top: 12px;
+}
+
+.async-status-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f7fbfa;
+  color: var(--brand-dark);
+  padding: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.async-status-card.warning {
+  border-color: #f0c36a;
+  background: #fffaf0;
+  color: #8a5a00;
+}
+
+.async-status-card button {
+  flex: 0 0 auto;
+  min-height: 34px;
 }
 
 .text-block h4 {
@@ -2488,6 +2597,7 @@ textarea {
   .correction-context,
   .learning-flow,
   .correction-form,
+  .advanced-filter-grid,
   .pipeline-overview-meta,
   .pipeline-summary-grid,
   .training-summary {

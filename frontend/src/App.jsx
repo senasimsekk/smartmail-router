@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   Controls,
@@ -111,6 +111,35 @@ const STATUS_FILTERS = [
   { value: "Routed", label: "Yönlendirildi" },
   { value: "Corrected", label: "Düzeltildi" },
 ];
+
+const ATTACHMENT_FILTERS = [
+  { value: "all", label: "Tüm ekler" },
+  { value: "with", label: "Ekli" },
+  { value: "without", label: "Eksiz" },
+];
+
+const REVIEW_FILTERS = [
+  { value: "all", label: "Tüm kayıtlar" },
+  { value: "required", label: "İnceleme gerekli" },
+  { value: "not_required", label: "İnceleme gerekmiyor" },
+];
+
+const QUEUE_SORT_OPTIONS = [
+  { value: "sla", label: "SLA önceliği" },
+  { value: "priority", label: "Öncelik" },
+  { value: "newest", label: "En yeni" },
+  { value: "oldest", label: "En eski" },
+];
+
+const DEFAULT_QUEUE_FILTERS = {
+  category: "all",
+  department: "all",
+  priority: "all",
+  attachment: "all",
+  review: "all",
+  mailbox: "all",
+  sort: "sla",
+};
 
 const DETAIL_TABS = [
   { value: "analysis", label: "Analiz" },
@@ -445,24 +474,136 @@ function getModelTypeLabel(modelType) {
   return modelType.replace("Logistic Regression", "Lojistik Regresyon");
 }
 
+function getAiModeLabel(aiMode) {
+  const labels = {
+    openrouter_api: "OpenRouter API",
+    gemini_api: "Gemini API",
+    openai_api: "OpenAI API",
+    demo: "Yerel demo",
+  };
+
+  return labels[aiMode] || "-";
+}
+
+function getAiAnalysisErrorMessage(message) {
+  if (!message || message === "Failed to fetch") {
+    return "LLM analizi geçici olarak alınamadı. Backend yeniden yükleniyor olabilir.";
+  }
+
+  return message;
+}
+
+function wait(milliseconds) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
+}
+
+function getEmailClassification(email) {
+  return {
+    category: email.classification?.category || email.expected_category || "",
+    department:
+      email.classification?.department ||
+      email.approved_department ||
+      email.expected_department ||
+      "",
+    priority: email.classification?.priority || email.expected_priority || "",
+    requires_human_review:
+      email.classification?.requires_human_review ??
+      email.requires_human_review ??
+      false,
+    confidence_score: email.classification?.confidence_score,
+  };
+}
+
+function getUniqueEmailOptions(emails, getValue) {
+  return [...new Set(emails.map(getValue).filter(Boolean))].sort((first, second) =>
+    first.localeCompare(second, "tr")
+  );
+}
+
+function getPrioritySortRank(priority) {
+  const ranks = {
+    Kritik: 0,
+    Yüksek: 1,
+    Normal: 2,
+    Düşük: 3,
+  };
+
+  return ranks[priority] ?? 4;
+}
+
 function matchesQueueSearch(email, searchTerm) {
   if (!searchTerm) {
     return true;
   }
 
+  const classification = getEmailClassification(email);
   const searchableText = [
     email.subject,
     email.sender,
+    email.body,
     email.source_mailbox,
+    email.attachment_names?.join(" "),
     email.routing_status,
     getStatusLabel(email.routing_status),
     email.sla?.status_label,
+    classification.category,
+    classification.department,
+    classification.priority,
   ]
     .filter(Boolean)
     .join(" ")
     .toLocaleLowerCase("tr-TR");
 
   return searchableText.includes(searchTerm);
+}
+
+function matchesQueueFilters(email, filters) {
+  const classification = getEmailClassification(email);
+
+  if (filters.category !== "all" && classification.category !== filters.category) {
+    return false;
+  }
+
+  if (
+    filters.department !== "all" &&
+    classification.department !== filters.department
+  ) {
+    return false;
+  }
+
+  if (filters.priority !== "all" && classification.priority !== filters.priority) {
+    return false;
+  }
+
+  if (filters.mailbox !== "all" && email.source_mailbox !== filters.mailbox) {
+    return false;
+  }
+
+  if (filters.attachment === "with" && !email.has_attachment) {
+    return false;
+  }
+
+  if (filters.attachment === "without" && email.has_attachment) {
+    return false;
+  }
+
+  if (filters.review === "required" && !classification.requires_human_review) {
+    return false;
+  }
+
+  if (filters.review === "not_required" && classification.requires_human_review) {
+    return false;
+  }
+
+  return true;
+}
+
+function countActiveQueueFilters(filters) {
+  return Object.entries(filters).filter(
+    ([key, value]) => key !== "sort" && value !== DEFAULT_QUEUE_FILTERS[key]
+  ).length;
 }
 
 function getWorkflowStatusClass(status) {
@@ -734,6 +875,8 @@ function App() {
   const [emails, setEmails] = useState([]);
   const [selectedEmailId, setSelectedEmailId] = useState(null);
   const [details, setDetails] = useState(null);
+  const aiAnalysisCacheRef = useRef({});
+  const activeAiAnalysisRequestRef = useRef(null);
   const [dashboard, setDashboard] = useState(null);
   const [operationalDashboard, setOperationalDashboard] = useState(null);
   const [managementReport, setManagementReport] = useState(null);
@@ -763,6 +906,8 @@ function App() {
   });
   const [loading, setLoading] = useState(true);
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const [aiAnalysisLoading, setAiAnalysisLoading] = useState(false);
+  const [aiAnalysisError, setAiAnalysisError] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [actionMessage, setActionMessage] = useState("");
   const [activeRole, setActiveRole] = useState("operator");
@@ -770,6 +915,7 @@ function App() {
   const [slaFilter, setSlaFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [queueSearch, setQueueSearch] = useState("");
+  const [queueFilters, setQueueFilters] = useState(DEFAULT_QUEUE_FILTERS);
   const [activeDetailTab, setActiveDetailTab] = useState("analysis");
 
   const selectedEmail = useMemo(
@@ -786,17 +932,58 @@ function App() {
           statusFilter === "all" || (email.routing_status || "New") === statusFilter
       )
       .filter((email) => matchesQueueSearch(email, normalizedSearch))
+      .filter((email) => matchesQueueFilters(email, queueFilters))
       .sort((firstEmail, secondEmail) => {
-        const rankDifference =
-          getSlaSortRank(firstEmail) - getSlaSortRank(secondEmail);
+        if (queueFilters.sort === "priority") {
+          const priorityDifference =
+            getPrioritySortRank(getEmailClassification(firstEmail).priority) -
+            getPrioritySortRank(getEmailClassification(secondEmail).priority);
 
-        if (rankDifference !== 0) {
-          return rankDifference;
+          if (priorityDifference !== 0) {
+            return priorityDifference;
+          }
+        }
+
+        if (queueFilters.sort === "newest" || queueFilters.sort === "oldest") {
+          const firstTime = new Date(firstEmail.created_at || 0).getTime();
+          const secondTime = new Date(secondEmail.created_at || 0).getTime();
+
+          if (firstTime !== secondTime) {
+            return queueFilters.sort === "newest"
+              ? secondTime - firstTime
+              : firstTime - secondTime;
+          }
+        }
+
+        if (queueFilters.sort === "sla") {
+          const rankDifference =
+            getSlaSortRank(firstEmail) - getSlaSortRank(secondEmail);
+
+          if (rankDifference !== 0) {
+            return rankDifference;
+          }
         }
 
         return firstEmail.id - secondEmail.id;
       });
-  }, [emails, queueSearch, slaFilter, statusFilter]);
+  }, [emails, queueFilters, queueSearch, slaFilter, statusFilter]);
+  const queueCategoryOptions = useMemo(
+    () => getUniqueEmailOptions(emails, (email) => getEmailClassification(email).category),
+    [emails]
+  );
+  const queueDepartmentOptions = useMemo(
+    () =>
+      getUniqueEmailOptions(emails, (email) => getEmailClassification(email).department),
+    [emails]
+  );
+  const queueMailboxOptions = useMemo(
+    () => getUniqueEmailOptions(emails, (email) => email.source_mailbox),
+    [emails]
+  );
+  const activeAdvancedFilterCount = useMemo(
+    () => countActiveQueueFilters(queueFilters),
+    [queueFilters]
+  );
   const activeRolePolicy = useMemo(
     () => getRolePolicy(activeRole),
     [activeRole]
@@ -882,22 +1069,74 @@ function App() {
     }
   }, [request]);
 
+  const fetchEmailAiAnalysis = useCallback(async function fetchEmailAiAnalysis(emailId) {
+    activeAiAnalysisRequestRef.current = emailId;
+    const cachedAiAnalysis = aiAnalysisCacheRef.current[emailId];
+
+    if (cachedAiAnalysis) {
+      setAiAnalysisLoading(false);
+      setDetails((currentDetails) =>
+        currentDetails?.emailId === emailId
+          ? { ...currentDetails, aiAnalysis: cachedAiAnalysis }
+          : currentDetails
+      );
+      return;
+    }
+
+    setAiAnalysisLoading(true);
+    setAiAnalysisError("");
+
+    try {
+      let aiAnalysis = null;
+
+      try {
+        aiAnalysis = await request(`/emails/${emailId}/ai-analysis`);
+      } catch (error) {
+        if (error.message !== "Failed to fetch") {
+          throw error;
+        }
+
+        await wait(900);
+        aiAnalysis = await request(`/emails/${emailId}/ai-analysis`);
+      }
+
+      aiAnalysisCacheRef.current = {
+        ...aiAnalysisCacheRef.current,
+        [emailId]: aiAnalysis,
+      };
+      if (activeAiAnalysisRequestRef.current === emailId) {
+        setDetails((currentDetails) =>
+          currentDetails?.emailId === emailId
+            ? { ...currentDetails, aiAnalysis }
+            : currentDetails
+        );
+      }
+    } catch (error) {
+      if (activeAiAnalysisRequestRef.current === emailId) {
+        setAiAnalysisError(getAiAnalysisErrorMessage(error.message));
+      }
+    } finally {
+      if (activeAiAnalysisRequestRef.current === emailId) {
+        setAiAnalysisLoading(false);
+      }
+    }
+  }, [request]);
+
   const fetchEmailDetails = useCallback(async function fetchEmailDetails(emailId) {
     setDetailsLoading(true);
+    setAiAnalysisError("");
     setActionMessage("");
 
     try {
       const [
         analysis,
         preprocessing,
-        aiAnalysis,
         responseSuggestion,
         logData,
       ] =
         await Promise.all([
           request(`/emails/${emailId}/analysis`),
           request(`/emails/${emailId}/preprocess`),
-          request(`/emails/${emailId}/ai-analysis`),
           request(`/emails/${emailId}/response-suggestion`),
           request(`/emails/${emailId}/logs`),
         ]);
@@ -926,21 +1165,23 @@ function App() {
       }
 
       setDetails({
+        emailId,
         analysis,
         preprocessing,
-        aiAnalysis,
+        aiAnalysis: aiAnalysisCacheRef.current[emailId] || null,
         responseSuggestion,
         pipeline: pipelineData,
         modelPrediction,
         ticket,
       });
       setLogs(logData.logs || []);
+      fetchEmailAiAnalysis(emailId);
     } catch (error) {
       setErrorMessage(error.message);
     } finally {
       setDetailsLoading(false);
     }
-  }, [request]);
+  }, [fetchEmailAiAnalysis, request]);
 
   useEffect(() => {
     // Initial API load is intentionally triggered when the app mounts.
@@ -1064,6 +1305,11 @@ function App() {
     try {
       await request(path, options);
       setActionMessage(successMessage);
+      if (selectedEmailId) {
+        const updatedAiCache = { ...aiAnalysisCacheRef.current };
+        delete updatedAiCache[selectedEmailId];
+        aiAnalysisCacheRef.current = updatedAiCache;
+      }
       await refreshWorkspace();
 
       if (selectedEmailId) {
@@ -1414,6 +1660,7 @@ function App() {
     details?.responseSuggestion?.response_suggestion || {};
   const ticket = details?.ticket;
   const aiAnalysis = details?.aiAnalysis?.ai_analysis || {};
+  const aiAnalysisLoaded = Boolean(details?.aiAnalysis?.ai_analysis);
   const trainedModelPrediction =
     details?.modelPrediction?.model_prediction?.prediction || {};
   const ruleBasedClassification = aiAnalysis.rule_based_classification || {};
@@ -1967,7 +2214,7 @@ function App() {
           <div className="queue-controls">
             <input
               aria-label="Gelen e-postalarda ara"
-              placeholder="Konu, gönderen veya kutu ara"
+              placeholder="Konu, gönderen, içerik, ek veya birim ara"
               value={queueSearch}
               onChange={(event) => setQueueSearch(event.target.value)}
             />
@@ -1983,6 +2230,157 @@ function App() {
               ))}
             </select>
           </div>
+
+          <details className="advanced-filter-panel">
+            <summary>
+              <span>Gelişmiş filtreler</span>
+              <strong>{activeAdvancedFilterCount}</strong>
+            </summary>
+            <div className="advanced-filter-grid">
+              <label>
+                Kategori
+                <select
+                  value={queueFilters.category}
+                  onChange={(event) =>
+                    setQueueFilters((currentFilters) => ({
+                      ...currentFilters,
+                      category: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="all">Tüm kategoriler</option>
+                  {queueCategoryOptions.map((category) => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Birim
+                <select
+                  value={queueFilters.department}
+                  onChange={(event) =>
+                    setQueueFilters((currentFilters) => ({
+                      ...currentFilters,
+                      department: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="all">Tüm birimler</option>
+                  {queueDepartmentOptions.map((department) => (
+                    <option key={department} value={department}>
+                      {department}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Öncelik
+                <select
+                  value={queueFilters.priority}
+                  onChange={(event) =>
+                    setQueueFilters((currentFilters) => ({
+                      ...currentFilters,
+                      priority: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="all">Tüm öncelikler</option>
+                  {PRIORITY_OPTIONS.map((priority) => (
+                    <option key={priority} value={priority}>
+                      {priority}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Ek
+                <select
+                  value={queueFilters.attachment}
+                  onChange={(event) =>
+                    setQueueFilters((currentFilters) => ({
+                      ...currentFilters,
+                      attachment: event.target.value,
+                    }))
+                  }
+                >
+                  {ATTACHMENT_FILTERS.map((filterOption) => (
+                    <option key={filterOption.value} value={filterOption.value}>
+                      {filterOption.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                İnceleme
+                <select
+                  value={queueFilters.review}
+                  onChange={(event) =>
+                    setQueueFilters((currentFilters) => ({
+                      ...currentFilters,
+                      review: event.target.value,
+                    }))
+                  }
+                >
+                  {REVIEW_FILTERS.map((filterOption) => (
+                    <option key={filterOption.value} value={filterOption.value}>
+                      {filterOption.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Kaynak kutu
+                <select
+                  value={queueFilters.mailbox}
+                  onChange={(event) =>
+                    setQueueFilters((currentFilters) => ({
+                      ...currentFilters,
+                      mailbox: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="all">Tüm kutular</option>
+                  {queueMailboxOptions.map((mailbox) => (
+                    <option key={mailbox} value={mailbox}>
+                      {formatMailboxDisplay(mailbox)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Sıralama
+                <select
+                  value={queueFilters.sort}
+                  onChange={(event) =>
+                    setQueueFilters((currentFilters) => ({
+                      ...currentFilters,
+                      sort: event.target.value,
+                    }))
+                  }
+                >
+                  {QUEUE_SORT_OPTIONS.map((sortOption) => (
+                    <option key={sortOption.value} value={sortOption.value}>
+                      {sortOption.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => {
+                  setSlaFilter("all");
+                  setStatusFilter("all");
+                  setQueueSearch("");
+                  setQueueFilters(DEFAULT_QUEUE_FILTERS);
+                }}
+              >
+                Temizle
+              </button>
+            </div>
+          </details>
 
           <div className="queue-list">
             {visibleEmails.length === 0 && (
@@ -2002,6 +2400,10 @@ function App() {
                 <span className="status-row">
                   <span>{formatMailboxDisplay(email.source_mailbox)}</span>
                   <strong>{getStatusLabel(email.routing_status)}</strong>
+                </span>
+                <span className="queue-classification-row">
+                  <span>{getEmailClassification(email).category || "Kategori yok"}</span>
+                  <strong>{getEmailClassification(email).priority || "-"}</strong>
                 </span>
                 <span className="sla-row">
                   <span>
@@ -2209,59 +2611,80 @@ function App() {
 
                         <section className="section-block">
                           <h3>LLM Destekli Karar</h3>
-                          <div className="analysis-grid">
-                            <Meta
-                              label="Kural kategorisi"
-                              value={ruleBasedClassification.category}
-                            />
-                            <Meta
-                              label="LLM kategorisi"
-                              value={llmClassification.ai_category}
-                            />
-                            <Meta
-                              label="LLM güveni"
-                              value={formatPercent(
-                                llmClassification.ai_confidence_score
-                              )}
-                            />
-                            <Meta
-                              label="LLM modu"
-                              value={
-                                aiAnalysis.ai_mode === "openai_api"
-                                  ? "OpenAI API"
-                                  : "Demo"
-                              }
-                            />
-                            <Meta
-                              label="Bağlantı"
-                              value={
-                                llmConnection.status === "connected"
-                                  ? "API bağlı"
-                                  : "Demo cevap"
-                              }
-                            />
-                            <Meta
-                              label="Karar kaynağı"
-                              value={
-                                getDecisionSourceLabel(
-                                  aiAnalysis.final_recommendation
-                                    ?.final_decision_source
-                                )
-                              }
-                            />
-                          </div>
-                          <TextBlock
-                            title="LLM özeti"
-                            text={llmClassification.ai_summary}
-                          />
-                          <TextBlock
-                            title="LLM gerekçesi"
-                            text={llmClassification.ai_explanation}
-                          />
-                          <ListBlock
-                            title="LLM kanıtları"
-                            items={llmClassification.evidence}
-                          />
+                          {!aiAnalysisLoaded && aiAnalysisLoading && (
+                            <div className="async-status-card">
+                              LLM analizi arka planda hazırlanıyor. Diğer analiz sonuçları kullanılabilir.
+                            </div>
+                          )}
+                          {!aiAnalysisLoaded && aiAnalysisError && (
+                            <div className="async-status-card warning">
+                              <span>{aiAnalysisError}</span>
+                              <button
+                                type="button"
+                                className="secondary-button"
+                                onClick={() => selectedEmail && fetchEmailAiAnalysis(selectedEmail.id)}
+                              >
+                                Tekrar dene
+                              </button>
+                            </div>
+                          )}
+                          {aiAnalysisLoaded && (
+                            <>
+                              <div className="analysis-grid">
+                                <Meta
+                                  label="Kural kategorisi"
+                                  value={ruleBasedClassification.category}
+                                />
+                                <Meta
+                                  label="LLM kategorisi"
+                                  value={llmClassification.ai_category}
+                                />
+                                <Meta
+                                  label="LLM güveni"
+                                  value={formatPercent(
+                                    llmClassification.ai_confidence_score
+                                  )}
+                                />
+                                <Meta
+                                  label="LLM modu"
+                                  value={getAiModeLabel(aiAnalysis.ai_mode)}
+                                />
+                                <Meta
+                                  label="Bağlantı"
+                                  value={
+                                    details?.aiAnalysis?.cached
+                                      ? "Cache kullanıldı"
+                                      : llmConnection.status === "connected"
+                                        ? "API bağlı"
+                                        : llmConnection.status === "skipped"
+                                          ? "LLM atlandı"
+                                          : "Demo cevap"
+                                  }
+                                />
+                                <Meta
+                                  label="Karar kaynağı"
+                                  value={
+                                    getDecisionSourceLabel(
+                                      aiAnalysis.final_recommendation
+                                        ?.final_decision_source
+                                    )
+                                  }
+                                />
+                              </div>
+                              <TextBlock
+                                title="LLM özeti"
+                                text={llmClassification.ai_summary}
+                              />
+                              <TextBlock
+                                title="LLM gerekçesi"
+                                text={llmClassification.ai_explanation}
+                              />
+                              <ListBlock
+                                title="LLM kanıtları"
+                                items={llmClassification.evidence}
+                              />
+                            </>
+                          )}
                         </section>
 
                         <section className="section-block">

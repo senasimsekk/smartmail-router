@@ -3,6 +3,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from typing import  Optional
+from time import monotonic
 from app.database import get_db
 from collections import Counter
 from app.services.email_ingestion_service import (
@@ -87,6 +88,30 @@ router = APIRouter(
     prefix="/emails",
     tags=["Emails"]
 )
+
+AI_ANALYSIS_CACHE_TTL_SECONDS = 600
+AI_ANALYSIS_CACHE: dict[int, tuple[float, dict]] = {}
+
+
+def get_cached_ai_analysis(email_id: int) -> dict | None:
+    cached = AI_ANALYSIS_CACHE.get(email_id)
+
+    if not cached:
+        return None
+
+    cached_at, cached_result = cached
+
+    if monotonic() - cached_at > AI_ANALYSIS_CACHE_TTL_SECONDS:
+        AI_ANALYSIS_CACHE.pop(email_id, None)
+        return None
+
+    return cached_result
+
+
+def set_cached_ai_analysis(email_id: int, result: dict) -> None:
+    AI_ANALYSIS_CACHE[email_id] = (monotonic(), result)
+
+
 class ManualEmailImportRequest(BaseModel):
     subject: str
     sender: str
@@ -214,6 +239,7 @@ def get_emails(db: Session = Depends(get_db)):
     for email_record in email_records:
         email = email_to_dict(email_record)
         classification = classify_email(email)
+        email["classification"] = classification
         email["sla"] = calculate_sla(email, classification)
         emails.append(email)
 
@@ -328,6 +354,14 @@ def get_email_ai_analysis(email_id: int, db: Session = Depends(get_db)):
     if email_record is None:
         raise HTTPException(status_code=404, detail="Email not found")
 
+    cached_result = get_cached_ai_analysis(email_id)
+
+    if cached_result:
+        return {
+            **cached_result,
+            "cached": True,
+        }
+
     email = email_to_dict(email_record)
     classification = classify_email(email)
 
@@ -336,12 +370,17 @@ def get_email_ai_analysis(email_id: int, db: Session = Depends(get_db)):
         rule_classification=classification,
     )
 
-    return {
+    result = {
         "email_id": email["id"],
         "subject": email["subject"],
         "sender": email["sender"],
         "ai_analysis": ai_analysis,
+        "cached": False,
     }
+
+    set_cached_ai_analysis(email_id, result)
+
+    return result
 @router.get("/{email_id:int}/response-suggestion")
 def get_response_suggestion(email_id: int, db: Session = Depends(get_db)):
     email_record = get_email_by_id_from_db(db, email_id)
